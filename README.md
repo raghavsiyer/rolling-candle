@@ -22,6 +22,10 @@ the window, it's flat at the last trade.
   volume that was bought or sold; they still move the candle's price and count in the volume under it. This reads
   the side from each print's `AggressorFlag`, so it needs a connection that sets it; on one that doesn't, every
   print counts as between and the candle stays at its lowest intensity.
+- **Typical volume from the start.** When the candle starts, it reads the last few minutes of 10-second bars, so
+  its brightness means something from the first trade rather than after 20 seconds and a jumpy few minutes. Bars
+  don't say who took a trade, so their volume is scaled by the share bought or sold seen live (a half until about
+  10,000 shares have traded); the bars fade out as live trading fills the lookback.
 - **Bursts.** Beyond 4 times typical volume, the body gets a soft glow that grows with the burst, its busiest prices
   run hot toward white, and the volume label turns bold.
 - **Labels.** The window ("10s") above the candle and the window's volume under it.

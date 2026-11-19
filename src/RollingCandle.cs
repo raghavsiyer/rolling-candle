@@ -258,9 +258,15 @@ public sealed class RollingCandle
 /// typical is its ratio. Opacity goes by the ratio on a log scale: typical is half, the full multiple (2 by default)
 /// full colour, its inverse (a half) or less a quarter's opacity. Above the glow multiple (4 by default) it's more
 /// than full colour: a glow whose heat rises on the same log scale to its most at the glow multiple squared (16).
-/// Until it has seen two windows' worth of time there's no telling what's typical, and the ratio is unknown. Sizes
-/// are added as trades arrive, on this PC's clock like the candle. This depends on nothing in Quantower, so the
-/// harness can test it.
+/// Typical counts only shares bought or sold, as the candle's brightness does (prints between the bid and ask aside).
+/// Sizes are added as trades arrive, on this PC's clock like the candle.
+/// With nothing else, there's no telling what's typical until two windows' worth of time has been seen, and the
+/// ratio is unknown. So at the start it's seeded from the chart's history (your request, 2026-11-19): the shares
+/// in the last few minutes of 10-second bars, spread over windows, times the share of volume bought or sold. Bars
+/// don't say who took a trade, so that share is the one seen live, starting from a guess of a half that the first
+/// 10,000 or so shares outweigh. The seed covers the part of the lookback not yet seen live, so it fades out as
+/// live trading fills the lookback and is gone once it has. This depends on nothing in Quantower, so the harness
+/// can test it.
 /// </summary>
 public sealed class VolumeBrightness
 {
@@ -268,8 +274,15 @@ public sealed class VolumeBrightness
     public const double MinOpacity = 0.25;
 
     private readonly object gate = new();
-    private readonly Queue<(long Ticks, double Size)> trades = new();
+    /// <summary>The share of volume taken to be bought or sold before any is seen, and how many shares outweigh it.</summary>
+    public const double GuessTakenShare = 0.5;
+
+    public const double GuessWeightShares = 10_000;
+
+    private readonly Queue<(long Ticks, double Size, bool Taken)> trades = new();
     private double sum;
+    private double sumAll;
+    private double seedPerWindow = double.NaN;
     private long firstTicks = long.MinValue;
     private long lookback;
     private long window;
@@ -294,8 +307,11 @@ public sealed class VolumeBrightness
         set => Volatile.Write(ref this.window, Math.Max(TimeSpan.TicksPerMillisecond, value.Ticks));
     }
 
-    /// <summary>A trade's shares, as it arrives.</summary>
-    public void Add(long utcTicks, double size)
+    /// <summary>
+    /// A trade's shares as it arrives, and whether they were bought or sold (taken) rather than traded between the
+    /// bid and ask. Only taken shares count toward typical; all of them toward the share that's taken.
+    /// </summary>
+    public void Add(long utcTicks, double size, bool taken = true)
     {
         if (!(size > 0))
             return;
@@ -304,12 +320,48 @@ public sealed class VolumeBrightness
         {
             if (this.firstTicks == long.MinValue)
                 this.firstTicks = utcTicks;
-            this.trades.Enqueue((utcTicks, size));
-            this.sum += size;
+            this.trades.Enqueue((utcTicks, size, taken));
+            this.sumAll += size;
+            if (taken)
+                this.sum += size;
         }
     }
 
-    /// <summary>Typical volume for one window at utcTicks, or NaN until two windows' worth of time has been seen.</summary>
+    /// <summary>Watching starts now: how long has been seen live counts from here, not from the first trade.</summary>
+    public void Begin(long utcTicks)
+    {
+        lock (this.gate)
+        {
+            if (this.firstTicks == long.MinValue || utcTicks < this.firstTicks)
+                this.firstTicks = utcTicks;
+        }
+    }
+
+    /// <summary>
+    /// The seed from history: all the shares traded (whoever took them) in the bars covering seconds before watching
+    /// began, which are spread over windows of the candle's length.
+    /// </summary>
+    public void Seed(double shares, double seconds)
+    {
+        if (!(shares >= 0) || !(seconds > 0))
+            return;
+
+        lock (this.gate)
+            this.seedPerWindow = shares / seconds * TimeSpan.FromTicks(Volatile.Read(ref this.window)).TotalSeconds;
+    }
+
+    /// <summary>The share of volume bought or sold so far, from the guess toward what's been seen.</summary>
+    public double TakenShare()
+    {
+        lock (this.gate)
+            return (this.sum + (GuessTakenShare * GuessWeightShares)) / (this.sumAll + GuessWeightShares);
+    }
+
+    /// <summary>
+    /// Typical volume bought or sold in one window at utcTicks. Seeded, it's the shares taken live over the whole
+    /// lookback plus the seed's estimate for the part not yet seen live. Unseeded, NaN until two windows' worth of
+    /// time has been seen.
+    /// </summary>
     public double Typical(long utcTicks)
     {
         lock (this.gate)
@@ -317,13 +369,29 @@ public sealed class VolumeBrightness
             long back = Volatile.Read(ref this.lookback);
             long length = Volatile.Read(ref this.window);
             while (this.trades.Count > 0 && this.trades.Peek().Ticks <= utcTicks - back)
-                this.sum -= this.trades.Dequeue().Size;
+            {
+                var old = this.trades.Dequeue();
+                this.sumAll -= old.Size;
+                if (old.Taken)
+                    this.sum -= old.Size;
+            }
+
             if (this.trades.Count == 0)
+            {
                 this.sum = 0;
+                this.sumAll = 0;
+            }
+
+            long seen = this.firstTicks == long.MinValue ? 0 : Math.Clamp(utcTicks - this.firstTicks, 0, back);
+            if (!double.IsNaN(this.seedPerWindow))
+            {
+                double share = (this.sum + (GuessTakenShare * GuessWeightShares)) / (this.sumAll + GuessWeightShares);
+                double unseen = (double)(back - seen) / back;
+                return (this.sum / back * length) + (unseen * this.seedPerWindow * share);
+            }
 
             if (this.firstTicks == long.MinValue)
                 return double.NaN;
-            long seen = Math.Min(back, utcTicks - this.firstTicks);
             return seen < 2 * length ? double.NaN : this.sum / seen * length;
         }
     }
@@ -365,6 +433,8 @@ public sealed class VolumeBrightness
         {
             this.trades.Clear();
             this.sum = 0;
+            this.sumAll = 0;
+            this.seedPerWindow = double.NaN;
             this.firstTicks = long.MinValue;
         }
     }

@@ -46,6 +46,7 @@ internal sealed class RollingCandleView
     // check against the prints the connection sent for the symbol (your report, 2026-11-18: highs and lows jumped
     // more than a full tape's window would; replaying captures says a full tape steps little).
     private long printsSeen;
+    private int generation;
     private double sharesSeen;
     private long nextReportTicks;
     /// <summary>The candle as drawn: its bar, colour alpha, and glow heat in twentieths (so a redraw waits for a visible change).</summary>
@@ -80,12 +81,61 @@ internal sealed class RollingCandleView
         if (chartSymbol == null)
             return;
 
+        long started = DateTime.UtcNow.Ticks;
+        int generation;
         lock (this.gate)
         {
             this.symbol = chartSymbol;
+            generation = ++this.generation;
+            this.brightness.Begin(started);
             chartSymbol.NewLast += this.OnNewLast;
             this.timer = new Timer(_ => this.OnTimer(), null, RedrawEveryMs, RedrawEveryMs);
         }
+
+        this.SeedFromHistory(chartSymbol, started, generation);
+    }
+
+    /// <summary>
+    /// Off Quantower's thread: typical volume to start from, the shares in the 10-second bars of the lookback before
+    /// started, so the candle's brightness means something from its first trade instead of after 20 seconds and a few
+    /// jumpy minutes. Dropped if the candle has started over since, or the bars can't be had (it then starts as before).
+    /// </summary>
+    private void SeedFromHistory(Symbol chartSymbol, long started, int generation)
+    {
+        var lookback = this.brightness.Lookback;
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                var from = new DateTime(started, DateTimeKind.Utc) - lookback;
+                double shares = 0;
+                int bars = 0;
+                using (var history = chartSymbol.GetHistory(new Period(BasePeriod.Second, 10), chartSymbol.HistoryType, from))
+                {
+                    for (int i = 0; i < history.Count; i++)
+                    {
+                        if (history[i, SeekOriginHistory.Begin] is HistoryItemBar bar && bar.TimeLeft >= from && bar.TimeLeft.Ticks < started && bar.Volume > 0)
+                        {
+                            shares += bar.Volume;
+                            bars++;
+                        }
+                    }
+                }
+
+                lock (this.gate)
+                {
+                    if (generation != this.generation)
+                        return;
+                    this.brightness.Seed(shares, lookback.TotalSeconds);
+                }
+
+                Core.Instance.Loggers.Log($"Rolling candle: {chartSymbol.Name} typical volume seeded from {bars} 10-second bars, {shares:#,0} shares over {lookback.TotalMinutes:0} minutes", LoggingLevel.System);
+            }
+            catch (Exception)
+            {
+                // No bars to be had: typical builds up from live trades alone.
+            }
+        });
     }
 
     public void Stop()
@@ -111,9 +161,10 @@ internal sealed class RollingCandleView
             : last.AggressorFlag == AggressorFlag.Sell ? PrintTaker.Seller
             : PrintTaker.Between;
         this.candle.Add(now, last.Price, last.Size, taker);
-        // Typical volume, like the candle's brightness, counts only what was bought or sold, not prints between.
-        if (last.Price > 0 && taker != PrintTaker.Between)
-            this.brightness.Add(now, last.Size);
+        // Typical volume, like the candle's brightness, counts only what was bought or sold, not prints between;
+        // every print counts toward the share that's bought or sold, which scales the seed from history.
+        if (last.Price > 0)
+            this.brightness.Add(now, last.Size, taker != PrintTaker.Between);
 
         lock (this.gate)
         {

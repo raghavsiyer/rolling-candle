@@ -78,6 +78,24 @@ Check(VolumeBrightness.Heat(100, 4) == 1 && VolumeBrightness.Heat(double.NaN, 4)
 Check(VolumeBrightness.Alpha(0) == 64 && VolumeBrightness.Alpha(0.5) == 159 && VolumeBrightness.Alpha(1) == 255 && VolumeBrightness.Alpha(2) == 255,
     $"opacity runs from a quarter (64) through half strength (159) to full (255) ({VolumeBrightness.Alpha(0)}, {VolumeBrightness.Alpha(0.5)}, {VolumeBrightness.Alpha(1)})");
 
+// Seeded from history: 90,000 shares in the 5 minutes of 10-second bars before the candle started, 3,000 a window.
+var seeded = new VolumeBrightness(TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(10));
+seeded.Begin(T(0));
+seeded.Seed(90_000, 300);
+Check(seeded.Typical(T(0)) == 1500 && seeded.Ratio(T(0), 1500) == 1,
+    $"from the start: the bars' 3,000 a window, half taken to be bought or sold until trades say otherwise ({seeded.Typical(T(0))})");
+seeded.Add(T(10), 30_000, taken: true);
+seeded.Add(T(10), 10_000, taken: false);
+Check(Math.Abs(seeded.TakenShare() - 0.7) < 1e-9, $"30,000 of 40,000 shares bought or sold moves the share from a half to 0.7 ({seeded.TakenShare()})");
+Check(Math.Abs(seeded.Typical(T(150)) - 2050) < 1e-6,
+    $"half way through the lookback: the live 30,000 bought or sold over 5 minutes (1,000 a window) and the bars for the half not seen live (3,000 x 0.7 x a half) ({seeded.Typical(T(150))})");
+Check(Math.Abs(seeded.Typical(T(300)) - 1000) < 1e-6, $"once the whole lookback has been seen live, the bars count for nothing ({seeded.Typical(T(300))})");
+seeded.Clear();
+Check(double.IsNaN(seeded.Typical(T(301))), "starting over drops the seed");
+var unseeded = new VolumeBrightness(TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(10));
+unseeded.Add(T(0), 500, taken: false);
+Check(unseeded.Typical(T(25)) == 0, "prints between the bid and ask don't count toward typical");
+
 // Shading by price: where in the candle the shares traded, with under 1,000 at a price at the lowest intensity.
 Check(VolumeAtPrice.TickAt(1) == 0.01 && VolumeAtPrice.TickAt(0.99) == 0.0001, "ticks: a cent from $1, a hundredth of a cent below");
 Check(VolumeAtPrice.Level(5.005) == 5.01 && VolumeAtPrice.Level(4.999) == 5.00 && VolumeAtPrice.Level(3.4499) == 3.45 && VolumeAtPrice.Level(0.51234) == 0.5123,
