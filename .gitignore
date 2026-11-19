@@ -1,0 +1,10 @@
+# Build output
+bin/
+obj/
+.vs/
+*.user
+
+# Binaries: Quantower's assemblies are never redistributed, and ours are built from source
+*.dll
+*.exe
+*.pdb

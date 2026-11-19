@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Rolling Candle indicator on its own, as RollingCandle.dll. ScalpFeed builds these same files into its
+       KeyMovingAverages.dll instead, so with ScalpFeed installed this one isn't needed. -->
+  <PropertyGroup>
+    <!-- Quantower v1.147.11 runs on .NET 10 with the Windows Desktop runtime, which is where the
+         System.Drawing.Graphics a chart paints with comes from. -->
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <AssemblyName>RollingCandle</AssemblyName>
+    <QuantowerBin Condition="'$(QuantowerBin)' == ''">C:\Quantower\TradingPlatform\v1.147.11\bin</QuantowerBin>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Compile against the installed DLL; Quantower supplies it at runtime, so never copy it. -->
+    <Reference Include="TradingPlatform.BusinessLayer">
+      <HintPath>$(QuantowerBin)\TradingPlatform.BusinessLayer.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

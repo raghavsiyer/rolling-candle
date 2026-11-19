@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The candle's Quantower-free maths; the drawing and the indicator need Quantower, so they stay out. -->
+    <Compile Include="..\src\RollingCandle.cs" LinkBase="src" />
+  </ItemGroup>
+</Project>
