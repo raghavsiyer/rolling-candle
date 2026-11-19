@@ -24,8 +24,8 @@ namespace ScalpFeedIndicators;
 internal sealed class RollingCandleView
 {
     private const int RedrawEveryMs = 250;
-    private static readonly Color Up = Color.FromArgb(38, 166, 154);
-    private static readonly Color Down = Color.FromArgb(239, 83, 80);
+    private static readonly Color Up = CandleShade.Up;
+    private static readonly Color Down = CandleShade.Down;
     private static readonly Color Label = Color.FromArgb(200, 200, 200);
 
     private readonly Indicator owner;
@@ -301,15 +301,13 @@ internal sealed class RollingCandleView
                 }
             }
 
-            // The candle: one gradient top to bottom, a 1-pixel wick outside the body and the body between the
-            // open and the close. In a burst the busiest prices run hot, toward white.
+            // The candle: shaded row by row top to bottom (CandleShade), a 1-pixel wick outside the body and the
+            // body between the open and the close. In a burst the busiest prices run hot, toward white.
             graphics.SmoothingMode = SmoothingMode.None;
-            using var shade = Gradient(stops, rowHigh, rowLow + 1, hue, heat, look.Alpha);
-            if (bodyTop > rowHigh)
-                graphics.FillRectangle(shade, centre, rowHigh, 1, bodyTop - rowHigh);
-            if (rowLow > bodyBottom)
-                graphics.FillRectangle(shade, centre, bodyBottom + 1, 1, rowLow - bodyBottom);
-            graphics.FillRectangle(shade, bodyLeft, bodyTop, body, bodyBottom + 1 - bodyTop);
+            var shade = CandleShade.Rows(stops, rowHigh, rowLow + 1, hue, heat, look.Alpha);
+            CandleShade.Fill(graphics, shade, rowHigh, centre, 1, rowHigh, bodyTop);
+            CandleShade.Fill(graphics, shade, rowHigh, centre, 1, bodyBottom + 1, rowLow + 1);
+            CandleShade.Fill(graphics, shade, rowHigh, bodyLeft, body, bodyTop, bodyBottom + 1);
 
             // In a burst the volume reads in the candle's colour, in bold.
             graphics.SmoothingMode = SmoothingMode.AntiAlias;
@@ -326,77 +324,6 @@ internal sealed class RollingCandleView
         {
             graphics.Restore(state);
         }
-    }
-
-    /// <summary>
-    /// A brush shading top to bottom through the stops, each at its alpha, green as far as its shares were bought
-    /// and red as far as sold (the candle's hue where that isn't known); in a burst, stops near the candle's brightest
-    /// (top) lifted toward white by up to half the heat.
-    /// </summary>
-    private static Brush Gradient(List<ShadeStop> stops, int top, int bottom, Color hue, float heat, int brightest)
-    {
-        Color At(ShadeStop stop)
-        {
-            var colour = double.IsNaN(stop.Buying) ? hue : Mix(Down, Up, stop.Buying);
-            if (heat <= 0)
-                return Color.FromArgb(stop.Alpha, colour);
-            int floor = VolumeBrightness.Alpha(0);
-            float hot = 0.5f * heat * Math.Clamp((stop.Alpha - floor) / (float)Math.Max(1, brightest - floor), 0f, 1f);
-            int Lift(int c) => (int)Math.Round(c + ((255 - c) * hot));
-            return Color.FromArgb(stop.Alpha, Lift(colour.R), Lift(colour.G), Lift(colour.B));
-        }
-
-        if (stops.Count < 2 || bottom - top < 2)
-        {
-            int alpha = 0;
-            ShadeStop most = stops.Count > 0 ? stops[0] : new ShadeStop(top, VolumeBrightness.Alpha(0), double.NaN);
-            foreach (var stop in stops)
-            {
-                if (stop.Alpha > alpha)
-                    (alpha, most) = (stop.Alpha, stop);
-            }
-
-            return new SolidBrush(At(most));
-        }
-
-        // A pixel of margin each end, past the candle, so GDI+'s tiling never shows at its edges.
-        float from = top - 1;
-        float to = bottom + 1;
-        var colours = new Color[stops.Count + 2];
-        var positions = new float[stops.Count + 2];
-        colours[0] = At(stops[0]);
-        positions[0] = 0;
-        for (int i = 0; i < stops.Count; i++)
-        {
-            colours[i + 1] = At(stops[i]);
-            positions[i + 1] = Math.Clamp(((float)stops[i].Y - from) / (to - from), 0f, 1f);
-        }
-
-        colours[^1] = At(stops[^1]);
-        positions[^1] = 1;
-
-        // Positions must climb; any that don't (rounding at the ends) nudge up a hair.
-        for (int i = 1; i < positions.Length; i++)
-        {
-            if (positions[i] <= positions[i - 1])
-                positions[i] = Math.Min(1, positions[i - 1] + 1e-5f);
-        }
-
-        positions[^1] = 1;
-        var brush = new LinearGradientBrush(new PointF(0, from), new PointF(0, to), colours[0], colours[^1])
-        {
-            InterpolationColors = new ColorBlend { Colors = colours, Positions = positions },
-            WrapMode = WrapMode.TileFlipXY,
-        };
-        return brush;
-    }
-
-    /// <summary>From a (at 0) to b (at 1), channel by channel.</summary>
-    private static Color Mix(Color a, Color b, double t)
-    {
-        t = Math.Clamp(t, 0, 1);
-        int Channel(int from, int to) => (int)Math.Round(from + ((to - from) * t));
-        return Color.FromArgb(Channel(a.R, b.R), Channel(a.G, b.G), Channel(a.B, b.B));
     }
 
     /// <summary>A rectangle with corners rounded by radius, for a glow that hugs the body rather than boxing it.</summary>

@@ -165,6 +165,52 @@ Check(Buying(stops) == "0.75,0.75,0,-,-",
 stops = VolumeAtPrice.Stops(levels, price => Math.Round((3.50 - price) * 10, 6), 0, 1, 1000, 255);
 Check(Buying(stops) == "0.5,0.5,0.5", $"zoomed out, prices sharing a row pool their buying and selling: 3,000 bought, 3,000 sold ({Buying(stops)})");
 
+// The drawn gradient, read back from a bitmap: each price's row must be its own stop's colour and alpha, never
+// blended with the row next to it. Drawn as the candle draws it (no smoothing), under each pixel offset mode, since
+// the chart's Graphics comes from Quantower.
+System.Drawing.Color Expected(ShadeStop st, System.Drawing.Color hue) =>
+    System.Drawing.Color.FromArgb(st.Alpha, double.IsNaN(st.Buying) ? hue : CandleShade.Mix(CandleShade.Down, CandleShade.Up, st.Buying));
+int WorstRow(List<ShadeStop> st, int top, int bottom, System.Drawing.Drawing2D.PixelOffsetMode mode, System.Drawing.Color hue, Func<int, bool> priceRow, out string where)
+{
+    using var bitmap = new System.Drawing.Bitmap(12, bottom + 4, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+    using (var g = System.Drawing.Graphics.FromImage(bitmap))
+    {
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None;
+        g.PixelOffsetMode = mode;
+        CandleShade.Fill(g, CandleShade.Rows(st, top, bottom, hue, 0, 255), top, 0, 12, top, bottom);
+    }
+
+    int worst = 0;
+    where = "";
+    foreach (var stop in st.Where(x => x.Y > top && x.Y < bottom && priceRow((int)Math.Floor(x.Y))))
+    {
+        int row = (int)Math.Floor(stop.Y);
+        var got = bitmap.GetPixel(6, row);
+        var want = Expected(stop, hue);
+        int off = new[] { Math.Abs(got.A - want.A), Math.Abs(got.R - want.R), Math.Abs(got.G - want.G), Math.Abs(got.B - want.B) }.Max();
+        if (off > worst)
+            (worst, where) = (off, $"row {row}: drawn {got.A},{got.R},{got.G},{got.B}, its price's {want.A},{want.R},{want.G},{want.B}");
+    }
+
+    return worst;
+}
+
+// Zoomed out to a pixel a tick: ten prices on ten rows, each brighter or dimmer and greener or redder than the next.
+var striped = new List<PriceLevel>();
+for (int i = 0; i < 10; i++)
+    striped.Add(new PriceLevel(3.50 - (i * 0.01), i % 2 == 0 ? 8000 : 1500, i % 2 == 0 ? 8000 : 0, i % 2 == 0 ? 0 : 1500));
+var stripedStops = VolumeAtPrice.Stops(striped, price => Math.Round((3.50 - price) * 100, 6) + 20, 20, 30, 1000, 255);
+// Zoomed in, ten pixels a tick: a green price, a red one a tick below, a quiet tick, then a busy mixed one.
+var spaced = new List<PriceLevel> { new(3.45, 6000, 6000, 0), new(3.44, 3000, 0, 3000), new(3.42, 5000, 2500, 2500) };
+var spacedStops = VolumeAtPrice.Stops(spaced, price => Math.Round((3.50 - price) * 1000, 6), 50, 81, 1000, 255);
+foreach (var mode in new[] { System.Drawing.Drawing2D.PixelOffsetMode.Default, System.Drawing.Drawing2D.PixelOffsetMode.Half })
+{
+    int a = WorstRow(stripedStops, 20, 30, mode, CandleShade.Up, _ => true, out string at);
+    Check(a <= 1, $"pixel offset {mode}, a tick a pixel: every price's row in its own colour, off by {a} at most {at}");
+    int b = WorstRow(spacedStops, 50, 81, mode, CandleShade.Up, row => row is 50 or 60 or 70 or 80, out at);
+    Check(b <= 1, $"pixel offset {mode}, ten pixels a tick: each traded price's row, and the quiet tick between (3.43), in its own colour, off by {b} at most {at}");
+}
+
 Console.WriteLine();
 Console.WriteLine(failures == 0 ? "ALL CHECKS PASSED" : $"{failures} CHECK(S) FAILED");
 return failures == 0 ? 0 : 1;
