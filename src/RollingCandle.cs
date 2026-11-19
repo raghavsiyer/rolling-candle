@@ -1,7 +1,10 @@
 namespace ScalpFeedIndicators;
 
-/// <summary>One rolling candle: the open, high, low, close and volume of the trades in the window, and how many.</summary>
-public readonly record struct RollingBar(double Open, double High, double Low, double Close, double Volume, int Trades)
+/// <summary>
+/// One rolling candle: the open, high, low, close and volume of the trades in the window, and how many; Taken, the
+/// shares of them bought or sold rather than traded between the bid and ask, which is what its brightness goes by.
+/// </summary>
+public readonly record struct RollingBar(double Open, double High, double Low, double Close, double Volume, int Trades, double Taken = 0)
 {
     public static RollingBar None { get; } = new(double.NaN, double.NaN, double.NaN, double.NaN, 0, 0);
 
@@ -9,8 +12,9 @@ public readonly record struct RollingBar(double Open, double High, double Low, d
 }
 
 /// <summary>
-/// The shares a rolling candle traded at one price, and of them how many were bought (at or above the ask) and sold
-/// (at or below the bid), as the tape colours them; the rest traded between.
+/// The shares a rolling candle took at one price, bought (at or above the ask) or sold (at or below the bid), as the
+/// tape colours them, and of them how many were bought and sold. Prints between the bid and ask aren't in Shares: a
+/// price with only those is quiet (your request, 2026-11-19).
 /// </summary>
 public readonly record struct PriceLevel(double Price, double Shares, double Bought = 0, double Sold = 0);
 
@@ -33,9 +37,11 @@ public enum PrintTaker
 /// are stops of one smooth gradient down the candle (your feedback, 2026-11-18: slices of shade looked boxy). Each
 /// price's colour is by who took it (your idea, 2026-11-18): green where it was bought, at or above the ask, red where
 /// it was sold, at or below the bid, as the tape colours them, and in between by the share bought, so big selling
-/// in the middle of a green candle shows red there. Prints between the bid and ask count for brightness but not
-/// colour; a price with none bought or sold, or under the least shares, and the quiet stretches between, keep the
-/// candle's own colour. This depends on nothing in Quantower, so the harness can test it.
+/// in the middle of a green candle shows red there. Prints between the bid and ask (the tape's grey ones) count for
+/// neither, here or in the whole candle's brightness (your request, 2026-11-19: they hid the volume that means
+/// something), though they still move its price and count in the volume under it. A price under the least shares,
+/// or with only such prints, and the quiet stretches between, keep the candle's own colour at the lowest intensity.
+/// This depends on nothing in Quantower, so the harness can test it.
 /// </summary>
 public static class VolumeAtPrice
 {
@@ -193,6 +199,7 @@ public sealed class RollingCandle
             double high = open;
             double low = open;
             double volume = 0;
+            double taken = 0;
             Dictionary<double, PriceLevel> byLevel = levels == null ? null : new();
             foreach (var (_, price, size, taker) in this.trades)
             {
@@ -201,13 +208,15 @@ public sealed class RollingCandle
                 if (price < low)
                     low = price;
                 volume += size;
+                double took = taker == PrintTaker.Between ? 0 : size;
+                taken += took;
                 if (byLevel != null)
                 {
                     double level = VolumeAtPrice.Level(price);
                     var was = byLevel.GetValueOrDefault(level);
                     byLevel[level] = new PriceLevel(
                         level,
-                        was.Shares + size,
+                        was.Shares + took,
                         was.Bought + (taker == PrintTaker.Buyer ? size : 0),
                         was.Sold + (taker == PrintTaker.Seller ? size : 0));
                 }
@@ -219,7 +228,7 @@ public sealed class RollingCandle
                 levels.Sort((a, b) => b.Price.CompareTo(a.Price));
             }
 
-            return new RollingBar(open, high, low, this.last, volume, this.trades.Count);
+            return new RollingBar(open, high, low, this.last, volume, this.trades.Count, taken);
         }
     }
 

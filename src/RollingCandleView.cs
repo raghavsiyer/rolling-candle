@@ -111,7 +111,8 @@ internal sealed class RollingCandleView
             : last.AggressorFlag == AggressorFlag.Sell ? PrintTaker.Seller
             : PrintTaker.Between;
         this.candle.Add(now, last.Price, last.Size, taker);
-        if (last.Price > 0)
+        // Typical volume, like the candle's brightness, counts only what was bought or sold, not prints between.
+        if (last.Price > 0 && taker != PrintTaker.Between)
             this.brightness.Add(now, last.Size);
 
         lock (this.gate)
@@ -159,10 +160,10 @@ internal sealed class RollingCandleView
         var bar = this.candle.At(now, levels);
         if (bar.IsEmpty)
             return new Look(bar, 0, 0);
-        if (!(bar.Volume >= this.minShares))
+        if (!(bar.Taken >= this.minShares))
             return new Look(bar, VolumeBrightness.Alpha(0), 0);
 
-        double ratio = this.brightness.Ratio(now, bar.Volume);
+        double ratio = this.brightness.Ratio(now, bar.Taken);
         int alpha = VolumeBrightness.Alpha(VolumeBrightness.Strength(ratio, this.fullMultiple));
         int heat = (int)Math.Round(VolumeBrightness.Heat(ratio, this.glowMultiple) * 20);
         return new Look(bar, alpha, heat);

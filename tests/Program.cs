@@ -84,16 +84,16 @@ Check(VolumeAtPrice.Level(5.005) == 5.01 && VolumeAtPrice.Level(4.999) == 5.00 &
     $"a trade counts at its tick, halves up: 5.005 at 5.01, 4.999 at 5.00, 0.51234 at 0.5123 ({VolumeAtPrice.Level(5.005)}, {VolumeAtPrice.Level(0.51234)})");
 
 var p = new RollingCandle(TimeSpan.FromSeconds(10));
-p.Add(T(0), 3.40, 100);
-p.Add(T(1), 3.45, 3000);
-p.Add(T(2), 3.405, 500);
-p.Add(T(3), 3.4499, 2000);
+p.Add(T(0), 3.40, 100, PrintTaker.Buyer);
+p.Add(T(1), 3.45, 3000, PrintTaker.Buyer);
+p.Add(T(2), 3.405, 500, PrintTaker.Buyer);
+p.Add(T(3), 3.4499, 2000, PrintTaker.Buyer);
 var levels = new List<PriceLevel>();
 var pb = p.At(T(3.5), levels);
-Check(levels.SequenceEqual([new PriceLevel(3.45, 5000), new PriceLevel(3.41, 500), new PriceLevel(3.40, 100)]) && pb.Volume == 5600,
+Check(levels.SequenceEqual([new PriceLevel(3.45, 5000, 5000), new PriceLevel(3.41, 500, 500), new PriceLevel(3.40, 100, 100)]) && pb.Volume == 5600,
     $"the candle's shares at each price, highest first, a midpoint print with its tick ({string.Join(", ", levels)})");
 p.At(T(11.5), levels);
-Check(levels.SequenceEqual([new PriceLevel(3.45, 2000), new PriceLevel(3.41, 500)]), "and they roll out with their trades");
+Check(levels.SequenceEqual([new PriceLevel(3.45, 2000, 2000), new PriceLevel(3.41, 500, 500)]), "and they roll out with their trades");
 
 Check(VolumeAtPrice.Alpha(5000, 5000, 1000, 255) == 255 && VolumeAtPrice.Alpha(1250, 5000, 1000, 255) == 160 && VolumeAtPrice.Alpha(999, 5000, 1000, 255) == 64,
     $"the busiest price gets the candle's colour, a quarter of its shares half way, under 1,000 the lowest ({VolumeAtPrice.Alpha(1250, 5000, 1000, 255)})");
@@ -127,8 +127,19 @@ sides.Add(T(2), 3.44, 2000, PrintTaker.Seller);
 sides.Add(T(3), 3.44, 500);
 sides.Add(T(4), 3.43, 800, PrintTaker.Seller);
 sides.At(T(4.5), levels);
-Check(levels.SequenceEqual([new PriceLevel(3.45, 4000, 3000, 1000), new PriceLevel(3.44, 2500, 0, 2000), new PriceLevel(3.43, 800, 0, 800)]),
-    $"each price's shares, bought and sold, a print between the bid and ask in neither ({string.Join(", ", levels)})");
+var sidesBar = sides.At(T(4.5), levels);
+Check(levels.SequenceEqual([new PriceLevel(3.45, 4000, 3000, 1000), new PriceLevel(3.44, 2000, 0, 2000), new PriceLevel(3.43, 800, 0, 800)]),
+    $"each price's shares bought or sold; a print between the bid and ask counts in neither, nor in its shares ({string.Join(", ", levels)})");
+Check(sidesBar.Volume == 7300 && sidesBar.Taken == 6800, $"the candle's volume has every print, what its brightness goes by only the bought and sold ({sidesBar})");
+var grey = new RollingCandle(TimeSpan.FromSeconds(10));
+grey.Add(T(0), 3.45, 50_000);
+grey.Add(T(1), 3.44, 50_000);
+grey.Add(T(2), 3.43, 2000, PrintTaker.Seller);
+var greyLevels = new List<PriceLevel>();
+var greyBar = grey.At(T(2.5), greyLevels);
+var greyStops = VolumeAtPrice.Stops(greyLevels, price => Math.Round((3.50 - price) * 1000, 6), 50, 81, 1000, 255);
+Check(greyBar.High == 3.45 && greyBar.Taken == 2000 && Alphas(greyStops).StartsWith("64,64,64,") && greyStops.Max(st => st.Alpha) == 255,
+    $"100,000 shares printed between the bid and ask stay at the lowest intensity, though the candle reaches up to them; the 2,000 sold is the brightest ({Alphas(greyStops)})");
 string Buying(List<ShadeStop> st) => string.Join(",", st.Select(x => double.IsNaN(x.Buying) ? "-" : x.Buying.ToString("0.##")));
 stops = VolumeAtPrice.Stops(levels, price => Math.Round((3.50 - price) * 1000, 6), 50, 71, 1000, 255);
 Check(Buying(stops) == "0.75,0.75,0,-,-",

@@ -18,8 +18,10 @@ the window, it's flat at the last trade.
   none, are at the lowest intensity, and so is the whole candle when the window has under 1,000 shares.
 - **Who took each price.** Each price is green where it was bought (at or above the ask) and red where it was sold (at
   or below the bid), and in between by the share bought. Big selling inside a green candle shows red there. Prints
-  between the bid and ask count toward brightness but not colour. This reads the side from each print's
-  `AggressorFlag`, so it needs a connection that sets it; on one that doesn't, the candle keeps its own colour.
+  between the bid and ask (the tape's grey ones) count for neither colour nor brightness, so they don't hide the
+  volume that was bought or sold; they still move the candle's price and count in the volume under it. This reads
+  the side from each print's `AggressorFlag`, so it needs a connection that sets it; on one that doesn't, every
+  print counts as between and the candle stays at its lowest intensity.
 - **Bursts.** Beyond 4 times typical volume, the body gets a soft glow that grows with the burst, its busiest prices
   run hot toward white, and the volume label turns bold.
 - **Labels.** The window ("10s") above the candle and the window's volume under it.
