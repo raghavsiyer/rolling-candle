@@ -11,6 +11,7 @@
          they stay out. The brush is drawn onto a bitmap with System.Drawing, from the Windows Desktop runtime. -->
     <Compile Include="..\src\RollingCandle.cs" LinkBase="src" />
     <Compile Include="..\src\CandleShade.cs" LinkBase="src" />
+    <Compile Include="..\src\TapeBursts.cs" LinkBase="src" />
   </ItemGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.WindowsDesktop.App" />

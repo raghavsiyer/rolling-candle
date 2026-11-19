@@ -217,6 +217,31 @@ foreach (var mode in new[] { System.Drawing.Drawing2D.PixelOffsetMode.Default, S
     Check(b <= 1, $"pixel offset {mode}, ten pixels a tick: each traded price's row, and the quiet tick between (3.43), in its own colour, off by {b} at most {at}");
 }
 
+// Tape bursts: a side's prints within a second of each other, judged against the side's typical rate.
+var tb = new TapeBursts { Gap = TimeSpan.FromSeconds(1), Keep = TimeSpan.FromSeconds(10) };
+// Typical: 200 shares a second bought or sold, so over a second the bar is 3 x 200 = 600, but at least 1,000.
+tb.Add(T(0), 3.40, 300, PrintTaker.Buyer);
+tb.Add(T(0.4), 3.41, 400, PrintTaker.Buyer);
+Check(tb.At(T(0.5), 200, 3, 1000).Count == 0, "700 bought in under a second: under the least shares, no burst yet");
+tb.Add(T(0.6), 3.42, 5000, PrintTaker.Between);
+tb.Add(T(0.7), 3.40, 2000, PrintTaker.Seller);
+tb.Add(T(0.9), 3.43, 600, PrintTaker.Buyer);
+var found = tb.At(T(1.0), 200, 3, 1000);
+Check(found.Count == 2 && found.Any(b => b.Side == PrintTaker.Buyer && b.Shares == 1300) && found.Any(b => b.Side == PrintTaker.Seller && b.Shares == 2000),
+    $"the buyers' run, through a sell and a print between the bid and ask, is 1,300 shares; the 2,000 sold is its own; the 5,000 between is in neither ({string.Join(", ", found)})");
+var buying = found.First(b => b.Side == PrintTaker.Buyer);
+Check(Math.Abs(buying.Price - ((3.40 * 300 + 3.41 * 400 + 3.43 * 600) / 1300)) < 1e-9 && Math.Abs(buying.Strength - 1.3) < 1e-9,
+    $"a burst sits at its average price by shares, and its strength is how far past the bar it is ({buying.Price:0.0000}, {buying.Strength})");
+tb.Add(T(2.5), 3.45, 900, PrintTaker.Buyer);
+Check(tb.At(T(2.6), 200, 3, 1000).Count(b => b.Side == PrintTaker.Buyer) == 1, "a print 1.6 s after the last starts a new run, which isn't a burst on its own");
+Check(tb.At(T(2.6), 2000, 3, 1000).Count == 0, "on a stock that typically trades 2,000 a second, none of these is a burst");
+Check(tb.At(T(2.6), double.NaN, 3, 1000).Count == 2, "with typical not known yet, only the least shares counts");
+Check(tb.At(T(10.6), 200, 3, 1000).Count == 2 && tb.At(T(10.8), 200, 3, 1000).Count == 1 && tb.At(T(11.0), 200, 3, 1000).Count == 0, "each burst stays until a window has passed since its own last print: the sell (last 0.7 s) goes at 10.7 s, the buy (0.9 s) at 10.9 s");
+var slow = new TapeBursts { Gap = TimeSpan.FromSeconds(1), Keep = TimeSpan.FromSeconds(10) };
+for (int i = 0; i < 6; i++)
+    slow.Add(T(i * 0.9), 3.40, 400, PrintTaker.Buyer);
+Check(slow.At(T(5), 200, 3, 1000).Count == 0, "a steady 400 every 0.9 s for 4.5 s is 2,400 against a bar of 2,700: steady buying isn't a burst");
+
 Console.WriteLine();
 Console.WriteLine(failures == 0 ? "ALL CHECKS PASSED" : $"{failures} CHECK(S) FAILED");
 return failures == 0 ? 0 : 1;

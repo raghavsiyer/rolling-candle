@@ -29,6 +29,12 @@ the window, it's flat at the last trade.
 - **Bursts.** Past full colour (2 times typical volume) the busiest prices run hotter and hotter toward white, up to
   60% of the way at 16 times typical, so 3x, 5x and 10x look different. Beyond 4 times typical the body also gets a
   glow that grows with the burst, and the volume label turns bold.
+- **Tape bursts.** A run of prints on one side, bought at or above the ask or sold at or below the bid, each within
+  a second of the last, becomes a soft round blotch on the candle at its average price: green bought, red sold,
+  bigger the more it beat the bar, fading over the window after its last print. It's a burst when its shares are at
+  least 3 times what the stock typically has bought or sold over that time, and at least 1,000. Prints between the
+  bid and ask never count. Settings turn the blotches off and set the second, the 3 times and the 1,000; another
+  turns the volume shading off, leaving the candle one plain colour with only the blotches.
 - **Labels.** The window ("10s") above the candle and the window's volume under it.
 
 Trades are timed on arrival, on the PC's clock, and rounded to their tick (a cent from $1, a hundredth of a cent below)

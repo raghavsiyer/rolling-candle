@@ -27,6 +27,21 @@ public sealed class RollingCandleIndicator : Indicator
     [InputParameter("Width (times the chart's candles)", 60, 0.5, 5, 0.1, 1)]
     public double Width = 1.5;
 
+    [InputParameter("Shade by volume", 65)]
+    public bool Shade = true;
+
+    [InputParameter("Show tape bursts", 70)]
+    public bool ShowBursts = true;
+
+    [InputParameter("Tape burst: a side's prints within (ms)", 75, 50, 10_000, 50, 0)]
+    public int BurstGapMs = 1000;
+
+    [InputParameter("Tape burst: at (times the typical rate bought or sold)", 80, 1, 50, 0.5, 1)]
+    public double BurstMultiple = 3;
+
+    [InputParameter("Tape burst: at least (shares)", 85, 0, 1_000_000, 100, 0)]
+    public int BurstMinShares = 1000;
+
     private readonly RollingCandleView view;
 
     public RollingCandleIndicator()
@@ -39,7 +54,8 @@ public sealed class RollingCandleIndicator : Indicator
 
     public override string ShortName => $"Rolling {this.WindowSeconds}s";
 
-    protected override void OnInit() => this.view.Start(this.Symbol, this.WindowSeconds, this.TypicalMinutes, this.FullMultiple, this.GlowMultiple, this.MinShares, this.Width);
+    protected override void OnInit() => this.view.Start(this.Symbol, this.WindowSeconds, this.TypicalMinutes, this.FullMultiple, this.GlowMultiple, this.MinShares, this.Width,
+        this.Shade, this.ShowBursts, this.BurstGapMs, this.BurstMultiple, this.BurstMinShares);
 
     protected override void OnClear() => this.view.Stop();
 
