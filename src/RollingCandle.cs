@@ -261,12 +261,12 @@ public sealed class RollingCandle
 /// Typical counts only shares bought or sold, as the candle's brightness does (prints between the bid and ask aside).
 /// Sizes are added as trades arrive, on this PC's clock like the candle.
 /// With nothing else, there's no telling what's typical until two windows' worth of time has been seen, and the
-/// ratio is unknown. So at the start it's seeded from the chart's history (your request, 2026-11-19): the shares
-/// in the last few minutes of 10-second bars, spread over windows, times the share of volume bought or sold. Bars
-/// don't say who took a trade, so that share is the one seen live, starting from a guess of a half that the first
-/// 10,000 or so shares outweigh. The seed covers the part of the lookback not yet seen live, so it fades out as
-/// live trading fills the lookback and is gone once it has. This depends on nothing in Quantower, so the harness
-/// can test it.
+/// ratio is unknown. So at the start it's seeded from the chart's history (your request, 2026-11-19): the last few
+/// minutes of 10-second bars, each kept with its shares and the time it ended, and each dropped as it ages past the
+/// lookback, just as a live trade is (your request, the same day: at first the bars were one total that faded
+/// evenly). Bars don't say who took a trade, so their shares count times the share of volume bought or sold seen
+/// live, starting from a guess of a half that the first 10,000 or so shares outweigh. Once the lookback has passed
+/// since the start, the bars are all gone. This depends on nothing in Quantower, so the harness can test it.
 /// </summary>
 public sealed class VolumeBrightness
 {
@@ -282,7 +282,9 @@ public sealed class VolumeBrightness
     private readonly Queue<(long Ticks, double Size, bool Taken)> trades = new();
     private double sum;
     private double sumAll;
-    private double seedPerWindow = double.NaN;
+    private readonly Queue<(long EndTicks, double Shares)> seedBars = new();
+    private double seedSum;
+    private bool seeded;
     private long firstTicks = long.MinValue;
     private long lookback;
     private long window;
@@ -338,16 +340,23 @@ public sealed class VolumeBrightness
     }
 
     /// <summary>
-    /// The seed from history: all the shares traded (whoever took them) in the bars covering seconds before watching
-    /// began, which are spread over windows of the candle's length.
+    /// The seed from history: bars from before watching began, each with the time it ended and all the shares traded
+    /// in it (whoever took them). Each counts until it's been the lookback since it ended.
     /// </summary>
-    public void Seed(double shares, double seconds)
+    public void Seed(IEnumerable<(long EndTicks, double Shares)> bars)
     {
-        if (!(shares >= 0) || !(seconds > 0))
-            return;
-
         lock (this.gate)
-            this.seedPerWindow = shares / seconds * TimeSpan.FromTicks(Volatile.Read(ref this.window)).TotalSeconds;
+        {
+            this.seedBars.Clear();
+            this.seedSum = 0;
+            foreach (var (end, shares) in bars.Where(b => b.Shares > 0).OrderBy(b => b.EndTicks))
+            {
+                this.seedBars.Enqueue((end, shares));
+                this.seedSum += shares;
+            }
+
+            this.seeded = true;
+        }
     }
 
     /// <summary>The share of volume bought or sold so far, from the guess toward what's been seen.</summary>
@@ -382,12 +391,16 @@ public sealed class VolumeBrightness
                 this.sumAll = 0;
             }
 
+            while (this.seedBars.Count > 0 && this.seedBars.Peek().EndTicks <= utcTicks - back)
+                this.seedSum -= this.seedBars.Dequeue().Shares;
+            if (this.seedBars.Count == 0)
+                this.seedSum = 0;
+
             long seen = this.firstTicks == long.MinValue ? 0 : Math.Clamp(utcTicks - this.firstTicks, 0, back);
-            if (!double.IsNaN(this.seedPerWindow))
+            if (this.seeded)
             {
                 double share = (this.sum + (GuessTakenShare * GuessWeightShares)) / (this.sumAll + GuessWeightShares);
-                double unseen = (double)(back - seen) / back;
-                return (this.sum / back * length) + (unseen * this.seedPerWindow * share);
+                return (this.sum + (share * this.seedSum)) / back * length;
             }
 
             if (this.firstTicks == long.MinValue)
@@ -450,7 +463,9 @@ public sealed class VolumeBrightness
             this.trades.Clear();
             this.sum = 0;
             this.sumAll = 0;
-            this.seedPerWindow = double.NaN;
+            this.seedBars.Clear();
+            this.seedSum = 0;
+            this.seeded = false;
             this.firstTicks = long.MinValue;
         }
     }

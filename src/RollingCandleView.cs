@@ -134,12 +134,15 @@ internal sealed class RollingCandleView
                 var from = new DateTime(started, DateTimeKind.Utc) - lookback;
                 double shares = 0;
                 int bars = 0;
+                var seed = new List<(long EndTicks, double Shares)>();
+                var barLength = TimeSpan.FromSeconds(10);
                 using (var history = chartSymbol.GetHistory(new Period(BasePeriod.Second, 10), chartSymbol.HistoryType, from))
                 {
                     for (int i = 0; i < history.Count; i++)
                     {
                         if (history[i, SeekOriginHistory.Begin] is HistoryItemBar bar && bar.TimeLeft >= from && bar.TimeLeft.Ticks < started && bar.Volume > 0)
                         {
+                            seed.Add(((bar.TimeLeft + barLength).Ticks, bar.Volume));
                             shares += bar.Volume;
                             bars++;
                         }
@@ -150,7 +153,7 @@ internal sealed class RollingCandleView
                 {
                     if (generation != this.generation)
                         return;
-                    this.brightness.Seed(shares, lookback.TotalSeconds);
+                    this.brightness.Seed(seed);
                 }
 
                 Core.Instance.Loggers.Log($"Rolling candle: {chartSymbol.Name} typical volume seeded from {bars} 10-second bars, {shares:#,0} shares over {lookback.TotalMinutes:0} minutes", LoggingLevel.System);

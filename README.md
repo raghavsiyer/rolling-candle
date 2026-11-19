@@ -25,7 +25,7 @@ the window, it's flat at the last trade.
 - **Typical volume from the start.** When the candle starts, it reads the last few minutes of 10-second bars, so
   its brightness means something from the first trade rather than after 20 seconds and a jumpy few minutes. Bars
   don't say who took a trade, so their volume is scaled by the share bought or sold seen live (a half until about
-  10,000 shares have traded); the bars fade out as live trading fills the lookback.
+  10,000 shares have traded); each bar drops out as it ages past the lookback, as a live trade does.
 - **Bursts.** Past full colour (2 times typical volume) the busiest prices run hotter and hotter toward white, up to
   60% of the way at 16 times typical, so 3x, 5x and 10x look different. Beyond 4 times typical the body also gets a
   glow that grows with the burst, and the volume label turns bold.

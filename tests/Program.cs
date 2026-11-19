@@ -84,18 +84,25 @@ Check(hotCore.R == 168 && hotCore.G == 219 && hotCore.B == 215 && coolEdge == Sy
 Check(VolumeBrightness.Alpha(0) == 64 && VolumeBrightness.Alpha(0.5) == 159 && VolumeBrightness.Alpha(1) == 255 && VolumeBrightness.Alpha(2) == 255,
     $"opacity runs from a quarter (64) through half strength (159) to full (255) ({VolumeBrightness.Alpha(0)}, {VolumeBrightness.Alpha(0.5)}, {VolumeBrightness.Alpha(1)})");
 
-// Seeded from history: 90,000 shares in the 5 minutes of 10-second bars before the candle started, 3,000 a window.
+// Seeded from history: thirty 10-second bars of 3,000 shares each, the last ending as the candle started (90,000
+// in the 5 minutes, 3,000 a window).
 var seeded = new VolumeBrightness(TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(10));
 seeded.Begin(T(0));
-seeded.Seed(90_000, 300);
+seeded.Seed(Enumerable.Range(0, 30).Select(k => (T(-290 + (10 * k)), 3000.0)));
 Check(seeded.Typical(T(0)) == 1500 && seeded.Ratio(T(0), 1500) == 1,
     $"from the start: the bars' 3,000 a window, half taken to be bought or sold until trades say otherwise ({seeded.Typical(T(0))})");
 seeded.Add(T(10), 30_000, taken: true);
 seeded.Add(T(10), 10_000, taken: false);
 Check(Math.Abs(seeded.TakenShare() - 0.7) < 1e-9, $"30,000 of 40,000 shares bought or sold moves the share from a half to 0.7 ({seeded.TakenShare()})");
 Check(Math.Abs(seeded.Typical(T(150)) - 2050) < 1e-6,
-    $"half way through the lookback: the live 30,000 bought or sold over 5 minutes (1,000 a window) and the bars for the half not seen live (3,000 x 0.7 x a half) ({seeded.Typical(T(150))})");
-Check(Math.Abs(seeded.Typical(T(300)) - 1000) < 1e-6, $"once the whole lookback has been seen live, the bars count for nothing ({seeded.Typical(T(300))})");
+    $"150 s in: the live 30,000 bought or sold, and the 15 bars that ended in the last 5 minutes (45,000 x 0.7), over 5 minutes ({seeded.Typical(T(150))})");
+Check(Math.Abs(seeded.Typical(T(300)) - 1000) < 1e-6, $"5 minutes in, every bar has aged out ({seeded.Typical(T(300))})");
+var bunched = new VolumeBrightness(TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(10));
+bunched.Begin(T(0));
+bunched.Seed(Enumerable.Range(0, 6).Select(k => (T(-290 + (10 * k)), 15_000.0)));
+double atStart = bunched.Typical(T(0)), at55 = bunched.Typical(T(55)), at61 = bunched.Typical(T(61));
+Check(Math.Abs(atStart - 1500) < 1e-6 && Math.Abs(at55 - 250) < 1e-6 && at61 == 0,
+    $"90,000 all in the first minute of the 5: each bar drops as it ages past 5 minutes, so it's gone 61 s in, not spread over 5 minutes ({atStart}, {at55}, {at61})");
 seeded.Clear();
 Check(double.IsNaN(seeded.Typical(T(301))), "starting over drops the seed");
 var unseeded = new VolumeBrightness(TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(10));
