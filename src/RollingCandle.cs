@@ -418,6 +418,22 @@ public sealed class VolumeBrightness
         return Math.Clamp(0.5 + (0.5 * Math.Log(ratio) / Math.Log(full)), 0, 1);
     }
 
+    /// <summary>
+    /// How hot the busiest prices run for a ratio, 0 to 1 (your feedback, 2026-11-19: abnormal volume didn't stand out
+    /// enough, and between full colour and the glow nothing changed): none up to full colour, then rising on a log
+    /// scale to its most where the glow is most (glowMultiple squared). With the defaults, 2x none, 4x a third, 8x two
+    /// thirds, 16x all.
+    /// </summary>
+    public static double Hot(double ratio, double fullMultiple, double glowMultiple)
+    {
+        double full = Math.Max(1.1, fullMultiple);
+        double glow = Math.Max(1.1, glowMultiple);
+        double most = Math.Max(full * 1.1, glow * glow);
+        if (double.IsNaN(ratio) || !(ratio > full))
+            return 0;
+        return Math.Clamp(Math.Log(ratio / full) / Math.Log(most / full), 0, 1);
+    }
+
     /// <summary>A burst's glow for a ratio, 0 to 1: none up to glowMultiple, most at glowMultiple squared.</summary>
     public static double Heat(double ratio, double glowMultiple)
     {

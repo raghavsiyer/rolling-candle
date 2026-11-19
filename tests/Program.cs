@@ -75,6 +75,12 @@ Check(VolumeBrightness.Strength(10, 2) == 1 && VolumeBrightness.Strength(0, 2) =
 Check(VolumeBrightness.Heat(3, 4) == 0 && VolumeBrightness.Heat(4, 4) == 0 && VolumeBrightness.Heat(8, 4) == 0.5 && VolumeBrightness.Heat(16, 4) == 1,
     "glow: none up to 4x typical, half at 8x, most at 16x");
 Check(VolumeBrightness.Heat(100, 4) == 1 && VolumeBrightness.Heat(double.NaN, 4) == 0, "and no more past 16x; none while typical isn't known");
+Check(VolumeBrightness.Hot(2, 2, 4) == 0 && Math.Abs(VolumeBrightness.Hot(4, 2, 4) - (1.0 / 3)) < 1e-9 && Math.Abs(VolumeBrightness.Hot(8, 2, 4) - (2.0 / 3)) < 1e-9 && VolumeBrightness.Hot(16, 2, 4) == 1,
+    $"past full colour it runs hotter right away: 2x none, 4x a third, 8x two thirds, 16x all ({VolumeBrightness.Hot(4, 2, 4)}, {VolumeBrightness.Hot(8, 2, 4)})");
+Check(VolumeBrightness.Hot(1.5, 2, 4) == 0 && VolumeBrightness.Hot(100, 2, 4) == 1 && VolumeBrightness.Hot(double.NaN, 2, 4) == 0, "none under full colour or while typical isn't known; no more past 16x");
+var hotCore = CandleShade.Colour(new ShadeStop(0, 255, 1), CandleShade.Up, 1, 255);
+var coolEdge = CandleShade.Colour(new ShadeStop(0, 64, 1), CandleShade.Up, 1, 255);
+Check(hotCore.R == 168 && hotCore.G == 219 && hotCore.B == 215 && coolEdge == System.Drawing.Color.FromArgb(64, CandleShade.Up), $"at its hottest the busiest price runs 60% of the way to white; the quietest keep their colour ({hotCore}, {coolEdge})");
 Check(VolumeBrightness.Alpha(0) == 64 && VolumeBrightness.Alpha(0.5) == 159 && VolumeBrightness.Alpha(1) == 255 && VolumeBrightness.Alpha(2) == 255,
     $"opacity runs from a quarter (64) through half strength (159) to full (255) ({VolumeBrightness.Alpha(0)}, {VolumeBrightness.Alpha(0.5)}, {VolumeBrightness.Alpha(1)})");
 

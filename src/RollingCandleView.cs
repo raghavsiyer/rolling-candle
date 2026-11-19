@@ -13,9 +13,10 @@ namespace ScalpFeedIndicators;
 /// there (VolumeAtPrice), in one smooth gradient: the busiest price brightest, prices under the least shares (1,000)
 /// or with none at a quarter's opacity, so it shows where volume was and wasn't traded. Each price is green where it
 /// was bought and red where it was sold, by the tape's own colouring (the print's AggressorFlag), so big selling
-/// inside a green candle shows red there. The wick is a 1-pixel line, as on the chart's own candles. In a burst
-/// (over 4 times typical) it's more than full colour: a soft glow around the body only (your feedback, 2026-11-18:
-/// never over the wick), and its busiest prices run hot, toward white. A window under the least shares is all at a
+/// inside a green candle shows red there. The wick is a 1-pixel line, as on the chart's own candles. Past full
+/// colour its busiest prices run hotter and hotter, toward white (VolumeBrightness.Hot; your feedback, 2026-11-19:
+/// abnormal volume didn't stand out enough), and in a burst (over 4 times typical) a glow grows around the body only
+/// (your feedback, 2026-11-18: never over the wick). A window under the least shares is all at a
 /// quarter, with no glow. It takes the chart symbol's prints as they arrive (Symbol.NewLast) and, four times a
 /// second, asks the chart to redraw when the candle has changed, so trades roll out of the window even when nothing
 /// trades. Used by the Rolling Candle indicator and by Key Moving Averages, so a Free licence's two indicators a
@@ -49,8 +50,11 @@ internal sealed class RollingCandleView
     private int generation;
     private double sharesSeen;
     private long nextReportTicks;
-    /// <summary>The candle as drawn: its bar, colour alpha, and glow heat in twentieths (so a redraw waits for a visible change).</summary>
-    private readonly record struct Look(RollingBar Bar, int Alpha, int Heat);
+    /// <summary>
+    /// The candle as drawn: its bar, colour alpha, glow heat and how hot its busiest prices run, both in twentieths
+    /// (so a redraw waits for a visible change).
+    /// </summary>
+    private readonly record struct Look(RollingBar Bar, int Alpha, int Heat, int Hot = 0);
 
     /// <param name="owner">The indicator whose chart it draws on.</param>
     /// <param name="latestBarTime">The open time of the chart's latest bar, or null with no bars yet.</param>
@@ -217,7 +221,8 @@ internal sealed class RollingCandleView
         double ratio = this.brightness.Ratio(now, bar.Taken);
         int alpha = VolumeBrightness.Alpha(VolumeBrightness.Strength(ratio, this.fullMultiple));
         int heat = (int)Math.Round(VolumeBrightness.Heat(ratio, this.glowMultiple) * 20);
-        return new Look(bar, alpha, heat);
+        int hot = (int)Math.Round(VolumeBrightness.Hot(ratio, this.fullMultiple, this.glowMultiple) * 20);
+        return new Look(bar, alpha, heat, hot);
     }
 
     private void OnTimer()
@@ -285,6 +290,7 @@ internal sealed class RollingCandleView
             graphics.SetClip(area);
             var hue = bar.Close >= bar.Open ? Up : Down;
             float heat = look.Heat / 20f;
+            float hot = look.Hot / 20f;
 
             // A burst: a soft glow around the body only, wider and stronger the bigger the burst, faintest and
             // widest layer first.
@@ -294,8 +300,8 @@ internal sealed class RollingCandleView
                 const int Layers = 5;
                 for (int layer = Layers; layer >= 1; layer--)
                 {
-                    float spread = (1.5f + (5f * heat)) * layer / Layers;
-                    using var glow = new SolidBrush(Color.FromArgb((int)((14 + (36 * heat)) * (Layers + 1 - layer) / Layers), hue));
+                    float spread = (2.5f + (7f * heat)) * layer / Layers;
+                    using var glow = new SolidBrush(Color.FromArgb((int)((30 + (60 * heat)) * (Layers + 1 - layer) / Layers), hue));
                     using var halo = Rounded(bodyLeft - spread, bodyTop - spread, body + (2 * spread), bodyBottom + 1 - bodyTop + (2 * spread), spread + 1);
                     graphics.FillPath(glow, halo);
                 }
@@ -304,7 +310,7 @@ internal sealed class RollingCandleView
             // The candle: shaded row by row top to bottom (CandleShade), a 1-pixel wick outside the body and the
             // body between the open and the close. In a burst the busiest prices run hot, toward white.
             graphics.SmoothingMode = SmoothingMode.None;
-            var shade = CandleShade.Rows(stops, rowHigh, rowLow + 1, hue, heat, look.Alpha);
+            var shade = CandleShade.Rows(stops, rowHigh, rowLow + 1, hue, hot, look.Alpha);
             CandleShade.Fill(graphics, shade, rowHigh, centre, 1, rowHigh, bodyTop);
             CandleShade.Fill(graphics, shade, rowHigh, centre, 1, bodyBottom + 1, rowLow + 1);
             CandleShade.Fill(graphics, shade, rowHigh, bodyLeft, body, bodyTop, bodyBottom + 1);

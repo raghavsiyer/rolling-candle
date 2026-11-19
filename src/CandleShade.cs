@@ -17,17 +17,17 @@ public static class CandleShade
 
     /// <summary>
     /// A stop's colour at its alpha: green as far as its shares were bought and red as far as sold (the candle's hue
-    /// where that isn't known); in a burst, stops near the candle's brightest lifted toward white by up to half the
-    /// heat.
+    /// where that isn't known); past full colour, stops near the candle's brightest lifted toward white by up to 0.6
+    /// of how hot it runs (VolumeBrightness.Hot), the busiest most.
     /// </summary>
-    public static Color Colour(ShadeStop stop, Color hue, float heat, int brightest)
+    public static Color Colour(ShadeStop stop, Color hue, float hot, int brightest)
     {
         var colour = double.IsNaN(stop.Buying) ? hue : Mix(Down, Up, stop.Buying);
-        if (heat <= 0)
+        if (hot <= 0)
             return Color.FromArgb(stop.Alpha, colour);
         int floor = VolumeBrightness.Alpha(0);
-        float hot = 0.5f * heat * Math.Clamp((stop.Alpha - floor) / (float)Math.Max(1, brightest - floor), 0f, 1f);
-        int Lift(int c) => (int)Math.Round(c + ((255 - c) * hot));
+        float lift = 0.6f * hot * Math.Clamp((stop.Alpha - floor) / (float)Math.Max(1, brightest - floor), 0f, 1f);
+        int Lift(int c) => (int)Math.Round(c + ((255 - c) * lift));
         return Color.FromArgb(stop.Alpha, Lift(colour.R), Lift(colour.G), Lift(colour.B));
     }
 
@@ -35,18 +35,18 @@ public static class CandleShade
     /// The colour of each pixel row from top to bottom (bottom not included), taken at the row's middle: a stop's own
     /// colour on its row, a straight blend between two stops, and the end stops' colours past them.
     /// </summary>
-    public static Color[] Rows(List<ShadeStop> stops, int top, int bottom, Color hue, float heat, int brightest)
+    public static Color[] Rows(List<ShadeStop> stops, int top, int bottom, Color hue, float hot, int brightest)
     {
         var rows = new Color[Math.Max(0, bottom - top)];
         if (rows.Length == 0)
             return rows;
         if (stops.Count == 0)
         {
-            Array.Fill(rows, Colour(new ShadeStop(top, VolumeBrightness.Alpha(0), double.NaN), hue, heat, brightest));
+            Array.Fill(rows, Colour(new ShadeStop(top, VolumeBrightness.Alpha(0), double.NaN), hue, hot, brightest));
             return rows;
         }
 
-        var colours = stops.Select(s => Colour(s, hue, heat, brightest)).ToArray();
+        var colours = stops.Select(s => Colour(s, hue, hot, brightest)).ToArray();
         int i = 0;
         for (int r = 0; r < rows.Length; r++)
         {
