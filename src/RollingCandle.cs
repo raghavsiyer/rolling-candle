@@ -287,6 +287,102 @@ public sealed class RollingCandle
 }
 
 /// <summary>
+/// The shares bought and sold lately, at each price and in all, for the rolling candle's brightness and shading (your
+/// choice, 2026-11-24): each print counts in full when it comes and fades with the window as its time constant, to 37%
+/// after one window and 14% after two. At a steady rate that's the same as the window's shares, so typical volume, the
+/// least shares and the multiples mean what they did; but a big print dims away instead of leaving all at once when
+/// the window does. The candle's own prices and volume stay the window's real trades. Prints between the bid and ask
+/// count for nothing, as before. This depends on nothing in Quantower, so the harness can test it.
+/// </summary>
+public sealed class FadingVolume
+{
+    /// <summary>A price with fewer shares than this left is forgotten.</summary>
+    private const double Least = 1;
+
+    private readonly object gate = new();
+    private readonly Dictionary<double, (double Bought, double Sold, long Ticks)> prices = new();
+    private double taken;
+    private long takenTicks;
+    private long window;
+
+    public FadingVolume(TimeSpan window) => this.Window = window;
+
+    public TimeSpan Window
+    {
+        get => TimeSpan.FromTicks(Volatile.Read(ref this.window));
+        set => Volatile.Write(ref this.window, Math.Max(TimeSpan.TicksPerMillisecond, value.Ticks));
+    }
+
+    public void Add(long utcTicks, double price, double size, PrintTaker taker)
+    {
+        if (!(price > 0) || !(size > 0) || taker == PrintTaker.Between)
+            return;
+
+        lock (this.gate)
+        {
+            this.taken = this.Faded(this.taken, this.takenTicks, utcTicks) + size;
+            this.takenTicks = Math.Max(this.takenTicks, utcTicks);
+
+            double level = VolumeAtPrice.Level(price);
+            var was = this.prices.GetValueOrDefault(level);
+            this.prices[level] = (
+                this.Faded(was.Bought, was.Ticks, utcTicks) + (taker == PrintTaker.Buyer ? size : 0),
+                this.Faded(was.Sold, was.Ticks, utcTicks) + (taker == PrintTaker.Seller ? size : 0),
+                Math.Max(was.Ticks, utcTicks));
+        }
+    }
+
+    /// <summary>The shares bought and sold, faded to now.</summary>
+    public double Taken(long nowUtcTicks)
+    {
+        lock (this.gate)
+            return this.Faded(this.taken, this.takenTicks, nowUtcTicks);
+    }
+
+    /// <summary>
+    /// Into levels, cleared first: the shares at each price from low to high (the candle's, rounded to their ticks),
+    /// faded to now, highest price first. Prices the candle has moved off aren't in it.
+    /// </summary>
+    public void Levels(long nowUtcTicks, double low, double high, List<PriceLevel> levels)
+    {
+        levels.Clear();
+        double from = VolumeAtPrice.Level(low) - 1e-9;
+        double to = VolumeAtPrice.Level(high) + 1e-9;
+        lock (this.gate)
+        {
+            List<double> gone = null;
+            foreach (var (price, at) in this.prices)
+            {
+                double bought = this.Faded(at.Bought, at.Ticks, nowUtcTicks);
+                double sold = this.Faded(at.Sold, at.Ticks, nowUtcTicks);
+                if (bought + sold < Least)
+                    (gone ??= []).Add(price);
+                else if (price >= from && price <= to)
+                    levels.Add(new PriceLevel(price, bought + sold, bought, sold));
+            }
+
+            foreach (double price in gone ?? [])
+                this.prices.Remove(price);
+        }
+
+        levels.Sort((a, b) => b.Price.CompareTo(a.Price));
+    }
+
+    public void Clear()
+    {
+        lock (this.gate)
+        {
+            this.prices.Clear();
+            this.taken = 0;
+            this.takenTicks = 0;
+        }
+    }
+
+    private double Faded(double shares, long ticks, long nowTicks) =>
+        shares * Math.Exp(-Math.Max(0, nowTicks - ticks) / (double)Volatile.Read(ref this.window));
+}
+
+/// <summary>
 /// How the rolling candle shows its volume (your ideas, 2026-11-18): against the stock's typical volume for a window
 /// that long, so the look means "unusual", not just "the most lately". Typical is the average over the last few
 /// minutes: the shares traded in them, spread evenly over windows of the candle's length. The window's volume over

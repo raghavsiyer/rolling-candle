@@ -93,6 +93,50 @@ var fiveSeconds = new RollingCandle(TimeSpan.FromSeconds(5));
 fiveSeconds.Add(T(0), 4.00, 100);
 fiveSeconds.Add(T(1), 4.20, 100);
 Check(Near(fiveSeconds.Roc(T(6)), Math.Exp(Math.Log(1.05) * Math.Exp(-1)) - 1), "it fades with the window's length, so a 5 second one fades twice as fast");
+var fading = new FadingVolume(TimeSpan.FromSeconds(10));
+Check(fading.Taken(T(0)) == 0, "nothing bought or sold yet: no fading volume");
+fading.Add(T(0), 4.00, 10_000, PrintTaker.Buyer);
+Check(Near(fading.Taken(T(0)), 10_000) && Near(fading.Taken(T(5)), 10_000 * Math.Exp(-0.5), 1e-6) && Near(fading.Taken(T(10)), 10_000 * Math.Exp(-1), 1e-6),
+    $"a print counts in full and fades: {fading.Taken(T(5)):0} after 5 s, {fading.Taken(T(10)):0} after 10, {fading.Taken(T(20)):0} after 20");
+Check(Near(fading.Taken(T(9.99)), fading.Taken(T(10.01)), 10), "with no drop as it leaves the candle's window");
+fading.Add(T(0), 4.00, 5_000, PrintTaker.Between);
+fading.Add(T(0), 0, 5_000, PrintTaker.Buyer);
+fading.Add(T(0), 4.00, 0, PrintTaker.Buyer);
+Check(Near(fading.Taken(T(0)), 10_000), "prints between the bid and ask, and ones with no price or shares, count for nothing");
+
+var atPrices = new List<PriceLevel>();
+fading.Clear();
+fading.Add(T(0), 4.004, 3_000, PrintTaker.Buyer);
+fading.Add(T(0), 4.00, 1_000, PrintTaker.Seller);
+fading.Add(T(0), 4.05, 2_000, PrintTaker.Seller);
+fading.Add(T(0), 3.90, 9_000, PrintTaker.Buyer);
+fading.Levels(T(0), 4.00, 4.05, atPrices);
+Check(atPrices.SequenceEqual(new[] { new PriceLevel(4.05, 2_000, 0, 2_000), new PriceLevel(4.00, 4_000, 3_000, 1_000) }),
+    "its shares at each price by who took them, rounded to the tick, highest first, and none from prices the candle is off");
+fading.Levels(T(10), 4.00, 4.05, atPrices);
+Check(atPrices.Count == 2 && Near(atPrices[1].Shares, 4_000 * Math.Exp(-1), 1e-6) && Near(atPrices[1].Bought / atPrices[1].Shares, 0.75) && Near(atPrices[0].Shares / atPrices[1].Shares, 0.5),
+    "they fade together, so which price is busiest and who took it stay as they were");
+fading.Add(T(10), 4.05, 2_000, PrintTaker.Buyer);
+fading.Levels(T(10), 4.00, 4.05, atPrices);
+Check(Near(atPrices[0].Shares, 2_000 + (2_000 * Math.Exp(-1)), 1e-6) && atPrices[0].Shares > atPrices[1].Shares, "a fresh print counts for more than one as big that's faded");
+fading.Levels(T(120), 4.00, 4.05, atPrices);
+Check(atPrices.Count == 0 && fading.Taken(T(120)) < 1, "after a couple of minutes there's nothing left");
+
+var flow = new FadingVolume(TimeSpan.FromSeconds(10));
+var flowTypical = new VolumeBrightness(TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(10));
+for (int i = 0; i < 3_000; i++)
+{
+    flow.Add(T(i / 10.0), 4.00 + (i % 3 * 0.01), 100, PrintTaker.Buyer);
+    flowTypical.Add(T(i / 10.0), 100);
+}
+Check(Near(flow.Taken(T(299.95)), 10_000, 100), $"at a steady rate it's what the window holds, 10,000 ({flow.Taken(T(299.95)):0})");
+Check(Near(flowTypical.Ratio(T(299.95), flow.Taken(T(299.95))), 1, 0.03), $"so a steady stock is at typical ({flowTypical.Ratio(T(299.95), flow.Taken(T(299.95))):0.000})");
+flow.Levels(T(299.95), 4.00, 4.02, atPrices);
+Check(atPrices.Count == 3 && Near(atPrices.Sum(l => l.Shares), flow.Taken(T(299.95)), 1), "and its prices add up to it");
+var quick = new FadingVolume(TimeSpan.FromSeconds(5));
+quick.Add(T(0), 4.00, 10_000, PrintTaker.Seller);
+Check(Near(quick.Taken(T(5)), 10_000 * Math.Exp(-1), 1e-6), "it fades with the window's length");
+
 Check(RollingCandle.FormatRoc(0.02361) == "+2.4%" && RollingCandle.FormatRoc(-0.004) == "-0.4%" && RollingCandle.FormatRoc(0.1249) == "+12.5%" && RollingCandle.FormatRoc(1.2341) == "+123.4%"
       && RollingCandle.FormatRoc(0) == "0.0%" && RollingCandle.FormatRoc(0.0004) == "0.0%" && RollingCandle.FormatRoc(-0.0004) == "0.0%" && RollingCandle.FormatRoc(0.0006) == "+0.1%" && RollingCandle.FormatRoc(double.NaN) == "",
     "it reads +2.4%, -0.4%, +12.5%, +123.4%, and 0.0% with no sign when it rounds to none");

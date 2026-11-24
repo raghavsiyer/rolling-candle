@@ -8,7 +8,9 @@ namespace ScalpFeedIndicators;
 /// Puts a RollingCandle on its indicator's price chart: one candle just right of the latest bar, half as wide again
 /// as the chart's own candles by default (a setting), green with the close at or above the open and red below, its
 /// rate of change over it ("+2.4%", green up and red down; your request, 2026-11-24, in place of "10s"), an exponential
-/// average with the window as its time constant (RollingCandle.Roc), and its window's volume under it. Its colour is as strong as its volume against the
+/// average with the window as its time constant (RollingCandle.Roc), and its window's volume under it. Its brightness,
+/// glow and shading go by volume that fades the same way (FadingVolume; your choice, 2026-11-24), its shape and the
+/// volume under it by the window's trades. Its colour is as strong as its volume against the
 /// stock's typical volume for a window that long (VolumeBrightness): half at typical, full at twice typical, a
 /// quarter's opacity when quiet. That's the candle's brightest; down it each price is shaded by the shares traded
 /// there (VolumeAtPrice), in one smooth gradient: the busiest price brightest, prices under the least shares (1,000)
@@ -37,6 +39,7 @@ internal sealed class RollingCandleView
     private readonly Indicator owner;
     private readonly Func<DateTime?> latestBarTime;
     private readonly RollingCandle candle = new(TimeSpan.FromSeconds(10));
+    private readonly FadingVolume fading = new(TimeSpan.FromSeconds(10));
     private readonly VolumeBrightness brightness = new(TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(10));
     private readonly TapeBursts bursts = new();
     private readonly object gate = new();
@@ -63,9 +66,9 @@ internal sealed class RollingCandleView
     /// <summary>
     /// The candle as drawn: its bar, colour alpha, glow heat and how hot its busiest prices run, both in twentieths
     /// (so a redraw waits for a visible change); while a burst's blotch is fading, the redraw tick, so it's redrawn; and
-    /// the rate of change as it reads, which fades with no trades.
+    /// the rate of change as it reads, which fades with no trades, as do the prices with enough shares to show (Lit).
     /// </summary>
-    private readonly record struct Look(RollingBar Bar, int Alpha, int Heat, int Hot = 0, long Frame = 0, string Roc = "");
+    private readonly record struct Look(RollingBar Bar, int Alpha, int Heat, int Hot = 0, long Frame = 0, string Roc = "", int Lit = 0);
 
     /// <param name="owner">The indicator whose chart it draws on.</param>
     /// <param name="latestBarTime">The open time of the chart's latest bar, or null with no bars yet.</param>
@@ -90,6 +93,8 @@ internal sealed class RollingCandleView
         this.seconds = Math.Max(1, windowSeconds);
         this.candle.Window = TimeSpan.FromSeconds(this.seconds);
         this.candle.Clear();
+        this.fading.Window = TimeSpan.FromSeconds(this.seconds);
+        this.fading.Clear();
         this.brightness.Window = TimeSpan.FromSeconds(this.seconds);
         this.brightness.Lookback = TimeSpan.FromMinutes(Math.Max(1, typicalMinutes));
         this.bursts.Gap = TimeSpan.FromMilliseconds(Math.Max(10, burstGapMs));
@@ -179,6 +184,7 @@ internal sealed class RollingCandleView
         }
 
         this.candle.Clear();
+        this.fading.Clear();
         this.brightness.Clear();
         this.bursts.Clear();
     }
@@ -191,6 +197,7 @@ internal sealed class RollingCandleView
             : last.AggressorFlag == AggressorFlag.Sell ? PrintTaker.Seller
             : PrintTaker.Between;
         this.candle.Add(now, last.Price, last.Size, taker);
+        this.fading.Add(now, last.Price, last.Size, taker);
         this.bursts.Add(now, last.Price, last.Size, taker);
         // Typical volume, like the candle's brightness, counts only what was bought or sold, not prints between;
         // every print counts toward the share that's bought or sold, which scales the seed from history.
@@ -235,11 +242,11 @@ internal sealed class RollingCandleView
         }
     }
 
-    /// <summary>The candle now, its colour's alpha (its brightest), and its glow; into levels, when given, its shares at each price.</summary>
+    /// <summary>The candle now, its colour's alpha (its brightest), and its glow; into levels, when given, the fading shares at each of its prices.</summary>
     private Look TakeLook(List<PriceLevel> levels = null, List<TapeBurst> burstsNow = null)
     {
         long now = DateTime.UtcNow.Ticks;
-        var bar = this.candle.At(now, levels);
+        var bar = this.candle.At(now);
         long frame = 0;
         if (this.showBursts)
         {
@@ -254,14 +261,18 @@ internal sealed class RollingCandleView
             return new Look(bar, 0, 0, 0, frame);
 
         string roc = RollingCandle.FormatRoc(this.candle.Roc(now));
-        if (!(bar.Taken >= this.minShares))
-            return new Look(bar, VolumeBrightness.Alpha(0), 0, 0, frame, roc);
+        levels ??= [];
+        this.fading.Levels(now, bar.Low, bar.High, levels);
+        int lit = levels.Count(l => l.Shares >= this.minShares);
+        double taken = this.fading.Taken(now);
+        if (!(taken >= this.minShares))
+            return new Look(bar, VolumeBrightness.Alpha(0), 0, 0, frame, roc, lit);
 
-        double ratio = this.brightness.Ratio(now, bar.Taken);
+        double ratio = this.brightness.Ratio(now, taken);
         int alpha = VolumeBrightness.Alpha(VolumeBrightness.Strength(ratio, this.fullMultiple));
         int heat = (int)Math.Round(VolumeBrightness.Heat(ratio, this.glowMultiple) * 20);
         int hot = (int)Math.Round(VolumeBrightness.Hot(ratio, this.fullMultiple, this.glowMultiple) * 20);
-        return new Look(bar, alpha, heat, hot, frame, roc);
+        return new Look(bar, alpha, heat, hot, frame, roc, lit);
     }
 
     private void OnTimer()

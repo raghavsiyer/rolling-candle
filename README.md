@@ -10,9 +10,11 @@ the window, it's flat at the last trade.
 
 ## What it shows
 
-- **Brightness by volume against typical.** The candle's colour is as strong as its window's volume against the
+- **Brightness by volume against typical.** The candle's colour is as strong as its recent volume against the
   stock's typical volume for a window that long, averaged over the last few minutes: half strength at typical, full
-  colour at twice typical, a quarter's opacity when quiet.
+  colour at twice typical, a quarter's opacity when quiet. Recent volume fades rather than leaving with the window:
+  each print counts in full when it comes, 37% after one window's time and 14% after two, so a big print dims away.
+  At a steady rate that's the same as the window's volume. The shading by price fades the same way.
 - **Where in the candle volume traded.** The body and wick are one smooth gradient. Each price is as bright as the
   shares traded there, and the busiest price gets the candle's full colour. Prices with fewer than 1,000 shares, or
   none, are at the lowest intensity, and so is the whole candle when the window has under 1,000 shares.
