@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace ScalpFeedIndicators;
 
 /// <summary>
@@ -152,6 +154,9 @@ public sealed class RollingCandle
     private readonly object gate = new();
     private readonly Queue<(long Ticks, double Price, double Size, PrintTaker Taker)> trades = new();
     private double last = double.NaN;
+
+    // The price of the latest trade to have left the window: what the price was when the window began.
+    private double before = double.NaN;
     private long window;
 
     public RollingCandle(TimeSpan window) => this.Window = window;
@@ -188,10 +193,7 @@ public sealed class RollingCandle
         levels?.Clear();
         lock (this.gate)
         {
-            long start = nowUtcTicks - Volatile.Read(ref this.window);
-            while (this.trades.Count > 0 && this.trades.Peek().Ticks <= start)
-                this.trades.Dequeue();
-
+            this.Roll(nowUtcTicks);
             if (this.trades.Count == 0)
                 return double.IsNaN(this.last) ? RollingBar.None : new RollingBar(this.last, this.last, this.last, this.last, 0, 0);
 
@@ -232,13 +234,50 @@ public sealed class RollingCandle
         }
     }
 
+    /// <summary>
+    /// The rate of change over the window at nowUtcTicks: the latest price against the price when the window began, 0.05
+    /// for 5% up. That's the last trade before the window, not the candle's open, so a jump to the window's first trade
+    /// counts, and it can be up while the candle is red. Until a trade has left the window it's against the open. NaN
+    /// before anything has traded.
+    /// </summary>
+    public double Roc(long nowUtcTicks)
+    {
+        lock (this.gate)
+        {
+            this.Roll(nowUtcTicks);
+            double from = !double.IsNaN(this.before) ? this.before : this.trades.Count > 0 ? this.trades.Peek().Price : this.last;
+            return (this.last / from) - 1;
+        }
+    }
+
     public void Clear()
     {
         lock (this.gate)
         {
             this.trades.Clear();
             this.last = double.NaN;
+            this.before = double.NaN;
         }
+    }
+
+    private void Roll(long nowUtcTicks)
+    {
+        long start = nowUtcTicks - Volatile.Read(ref this.window);
+        while (this.trades.Count > 0 && this.trades.Peek().Ticks <= start)
+            this.before = this.trades.Dequeue().Price;
+    }
+
+    /// <summary>The rate of change as the label over the candle reads it: +2.35%, -0.40%, +12.5%, 0.00%.</summary>
+    public static string FormatRoc(double roc)
+    {
+        if (!double.IsFinite(roc))
+            return "";
+
+        double percent = Math.Abs(roc * 100);
+        string size = percent >= 99.95 ? percent.ToString("0", CultureInfo.InvariantCulture)
+            : percent >= 9.995 ? percent.ToString("0.0", CultureInfo.InvariantCulture)
+            : percent.ToString("0.00", CultureInfo.InvariantCulture);
+        return (size == "0.00" ? "" : roc > 0 ? "+" : "-") + size + "%";
     }
 
     /// <summary>Shares as the label under the candle reads them: 850, 12.3K, 1.25M.</summary>

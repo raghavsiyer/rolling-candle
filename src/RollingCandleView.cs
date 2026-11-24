@@ -7,7 +7,8 @@ namespace ScalpFeedIndicators;
 /// <summary>
 /// Puts a RollingCandle on its indicator's price chart: one candle just right of the latest bar, half as wide again
 /// as the chart's own candles by default (a setting), green with the close at or above the open and red below, its
-/// window over it ("10s") and the window's volume under it. Its colour is as strong as its volume against the
+/// window's rate of change over it ("+2.35%", green up and red down; your request, 2026-11-24, in place of "10s") and
+/// its volume under it. Its colour is as strong as its volume against the
 /// stock's typical volume for a window that long (VolumeBrightness): half at typical, full at twice typical, a
 /// quarter's opacity when quiet. That's the candle's brightest; down it each price is shaded by the shares traded
 /// there (VolumeAtPrice), in one smooth gradient: the busiest price brightest, prices under the least shares (1,000)
@@ -387,9 +388,13 @@ internal sealed class RollingCandleView
             graphics.SmoothingMode = SmoothingMode.AntiAlias;
             using var font = new Font("Segoe UI", 8f, heat > 0 ? FontStyle.Bold : FontStyle.Regular);
             using var text = new SolidBrush(heat > 0 ? hue : Label);
-            string over = $"{this.seconds}s";
+            string over = RollingCandle.FormatRoc(this.candle.Roc(DateTime.UtcNow.Ticks));
+            using var rocText = new SolidBrush(over.StartsWith('+') ? Up : over.StartsWith('-') ? Down : Label);
             var size = graphics.MeasureString(over, font);
-            graphics.DrawString(over, font, text, centre + 0.5f - size.Width / 2, rowHigh - size.Height - 1);
+
+            // Kept inside the chart: it's wider than the candle, which can be at the right edge.
+            float overLeft = Math.Max(area.Left, Math.Min(centre + 0.5f - (size.Width / 2), area.Right - size.Width));
+            graphics.DrawString(over, font, rocText, overLeft, rowHigh - size.Height - 1);
             string under = RollingCandle.FormatVolume(bar.Volume);
             size = graphics.MeasureString(under, font);
             graphics.DrawString(under, font, text, centre + 0.5f - size.Width / 2, rowLow + 2);

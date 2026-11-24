@@ -44,6 +44,28 @@ Check(junk.At(T(1)).IsEmpty, "a price of 0 or less, or a negative size, isn't a 
 junk.Add(T(1), 2.00, 0);
 Check(junk.At(T(1)) == new RollingBar(2.00, 2.00, 2.00, 2.00, 0, 1), "a trade of 0 shares still moves the price");
 
+var roc = new RollingCandle(TimeSpan.FromSeconds(10));
+bool Near(double a, double b) => Math.Abs(a - b) < 1e-12;
+Check(double.IsNaN(roc.Roc(T(0))), "nothing traded yet: no rate of change");
+roc.Add(T(0), 4.00, 100);
+Check(Near(roc.Roc(T(1)), 0), "one trade: none yet");
+roc.Add(T(5), 4.20, 100);
+Check(Near(roc.Roc(T(6)), 0.05), $"until a trade leaves the window, against its open ({roc.Roc(T(6))})");
+roc.Add(T(11), 4.10, 100);
+Check(Near(roc.Roc(T(11)), 0.025) && roc.At(T(11)) == new RollingBar(4.20, 4.20, 4.10, 4.10, 200, 2), "then against the last trade before the window: up 2.5% from 4.00, though the candle opens at 4.20 and is red");
+Check(Near(roc.Roc(T(15)), (4.10 / 4.20) - 1), "as each trade leaves, it's against that one");
+Check(Near(roc.Roc(T(40)), 0), "with nothing in the window the price hasn't changed");
+roc.Add(T(41), 4.51, 100);
+Check(Near(roc.Roc(T(41)), 0.1) && roc.At(T(41)).Open == 4.51, $"a jump to the window's first trade counts, though the candle is flat ({roc.Roc(T(41))})");
+roc.Clear();
+Check(double.IsNaN(roc.Roc(T(42))), "starting over forgets the price before");
+roc.Add(T(43), 2.00, 100);
+Check(Near(roc.Roc(T(43)), 0), "so a new stock isn't measured against the last one's price");
+Check(RollingCandle.FormatRoc(0.02351) == "+2.35%" && RollingCandle.FormatRoc(-0.004) == "-0.40%" && RollingCandle.FormatRoc(0.1249) == "+12.5%" && RollingCandle.FormatRoc(1.2345) == "+123%"
+      && RollingCandle.FormatRoc(0) == "0.00%" && RollingCandle.FormatRoc(0.00004) == "0.00%" && RollingCandle.FormatRoc(-0.00004) == "0.00%" && RollingCandle.FormatRoc(double.NaN) == "",
+    "it reads +2.35%, -0.40%, +12.5%, +123%, and 0.00% with no sign when it rounds to none");
+Check(RollingCandle.FormatRoc(0.09994) == "+9.99%" && RollingCandle.FormatRoc(0.09996) == "+10.0%" && RollingCandle.FormatRoc(0.9994) == "+99.9%" && RollingCandle.FormatRoc(0.9996) == "+100%", "and changes decimals where it rounds over");
+
 Check(RollingCandle.FormatVolume(850) == "850" && RollingCandle.FormatVolume(1234) == "1.23K" && RollingCandle.FormatVolume(12_345) == "12.3K"
       && RollingCandle.FormatVolume(1_250_000) == "1.25M", "the volume label reads 850, 1.23K, 12.3K, 1.25M");
 Check(RollingBar.None == RollingBar.None, "an empty candle equals itself, so the redraw timer can tell nothing changed");
