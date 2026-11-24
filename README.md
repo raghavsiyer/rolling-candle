@@ -35,9 +35,10 @@ the window, it's flat at the last trade.
   least 3 times what the stock typically has bought or sold over that time, and at least 1,000. Prints between the
   bid and ask never count. Settings turn the blotches off and set the second, the 3 times and the 1,000; another
   turns the volume shading off, leaving the candle one plain colour with only the blotches.
-- **Labels.** The rate of change over the window above the candle ("+2.4%", green up and red down), and the window's
-  volume under it. The rate of change is the latest price against the price when the window began, which is the last
-  trade before it rather than the candle's open, so a jump to the window's first trade counts.
+- **Labels.** The rate of change above the candle ("+2.4%", green up and red down), and the window's volume under it.
+  The rate of change is an exponential average: each trade's change counts in full when it comes and fades with the
+  window as its time constant, to 37% after one window and 14% after two. On a steady move it reads about what the
+  change over the window would, but a jump fades out instead of leaving all at once, and a move that stalls fades.
 
 Trades are timed on arrival, on the PC's clock, and rounded to their tick (a cent from $1, a hundredth of a cent below)
 for the shading.

@@ -155,8 +155,9 @@ public sealed class RollingCandle
     private readonly Queue<(long Ticks, double Price, double Size, PrintTaker Taker)> trades = new();
     private double last = double.NaN;
 
-    // The price of the latest trade to have left the window: what the price was when the window began.
-    private double before = double.NaN;
+    // The rate of change when a trade last came, and when that was: see Roc.
+    private double change;
+    private long changeTicks;
     private long window;
 
     public RollingCandle(TimeSpan window) => this.Window = window;
@@ -175,6 +176,8 @@ public sealed class RollingCandle
 
         lock (this.gate)
         {
+            this.change = double.IsNaN(this.last) ? 0 : this.Faded(utcTicks) + Math.Log(price / this.last);
+            this.changeTicks = Math.Max(this.changeTicks, utcTicks);
             this.trades.Enqueue((utcTicks, price, size, taker));
             this.last = price;
         }
@@ -193,7 +196,10 @@ public sealed class RollingCandle
         levels?.Clear();
         lock (this.gate)
         {
-            this.Roll(nowUtcTicks);
+            long start = nowUtcTicks - Volatile.Read(ref this.window);
+            while (this.trades.Count > 0 && this.trades.Peek().Ticks <= start)
+                this.trades.Dequeue();
+
             if (this.trades.Count == 0)
                 return double.IsNaN(this.last) ? RollingBar.None : new RollingBar(this.last, this.last, this.last, this.last, 0, 0);
 
@@ -235,19 +241,16 @@ public sealed class RollingCandle
     }
 
     /// <summary>
-    /// The rate of change over the window at nowUtcTicks: the latest price against the price when the window began, 0.05
-    /// for 5% up. That's the last trade before the window, not the candle's open, so a jump to the window's first trade
-    /// counts, and it can be up while the candle is red. Until a trade has left the window it's against the open. NaN
-    /// before anything has traded.
+    /// The rate of change at nowUtcTicks as an exponential average (your request, 2026-11-24), 0.05 for 5% up: each
+    /// trade's change counts in full when it comes and fades with the window as its time constant, to 37% after one
+    /// window and 14% after two. That makes it how far the price is from its own average over time, faded the same way.
+    /// On a steady move it reads about what the change over the window would, but a jump fades out instead of staying
+    /// for the window and then leaving all at once, and a move that stalls fades at once. NaN before anything has traded.
     /// </summary>
     public double Roc(long nowUtcTicks)
     {
         lock (this.gate)
-        {
-            this.Roll(nowUtcTicks);
-            double from = !double.IsNaN(this.before) ? this.before : this.trades.Count > 0 ? this.trades.Peek().Price : this.last;
-            return (this.last / from) - 1;
-        }
+            return double.IsNaN(this.last) ? double.NaN : Math.Exp(this.Faded(nowUtcTicks)) - 1;
     }
 
     public void Clear()
@@ -256,16 +259,13 @@ public sealed class RollingCandle
         {
             this.trades.Clear();
             this.last = double.NaN;
-            this.before = double.NaN;
+            this.change = 0;
+            this.changeTicks = 0;
         }
     }
 
-    private void Roll(long nowUtcTicks)
-    {
-        long start = nowUtcTicks - Volatile.Read(ref this.window);
-        while (this.trades.Count > 0 && this.trades.Peek().Ticks <= start)
-            this.before = this.trades.Dequeue().Price;
-    }
+    private double Faded(long utcTicks) =>
+        this.change * Math.Exp(-Math.Max(0, utcTicks - this.changeTicks) / (double)Volatile.Read(ref this.window));
 
     /// <summary>The rate of change as the label over the candle reads it, to one decimal: +2.4%, -0.4%, +12.5%, 0.0%.</summary>
     public static string FormatRoc(double roc)

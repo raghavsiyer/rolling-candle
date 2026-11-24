@@ -45,22 +45,54 @@ junk.Add(T(1), 2.00, 0);
 Check(junk.At(T(1)) == new RollingBar(2.00, 2.00, 2.00, 2.00, 0, 1), "a trade of 0 shares still moves the price");
 
 var roc = new RollingCandle(TimeSpan.FromSeconds(10));
-bool Near(double a, double b) => Math.Abs(a - b) < 1e-12;
+bool Near(double a, double b, double within = 1e-9) => Math.Abs(a - b) < within;
+double Fade(double change, double seconds) => Math.Exp(Math.Log(1 + change) * Math.Exp(-seconds / 10)) - 1;
 Check(double.IsNaN(roc.Roc(T(0))), "nothing traded yet: no rate of change");
 roc.Add(T(0), 4.00, 100);
-Check(Near(roc.Roc(T(1)), 0), "one trade: none yet");
-roc.Add(T(5), 4.20, 100);
-Check(Near(roc.Roc(T(6)), 0.05), $"until a trade leaves the window, against its open ({roc.Roc(T(6))})");
-roc.Add(T(11), 4.10, 100);
-Check(Near(roc.Roc(T(11)), 0.025) && roc.At(T(11)) == new RollingBar(4.20, 4.20, 4.10, 4.10, 200, 2), "then against the last trade before the window: up 2.5% from 4.00, though the candle opens at 4.20 and is red");
-Check(Near(roc.Roc(T(15)), (4.10 / 4.20) - 1), "as each trade leaves, it's against that one");
-Check(Near(roc.Roc(T(40)), 0), "with nothing in the window the price hasn't changed");
-roc.Add(T(41), 4.51, 100);
-Check(Near(roc.Roc(T(41)), 0.1) && roc.At(T(41)).Open == 4.51, $"a jump to the window's first trade counts, though the candle is flat ({roc.Roc(T(41))})");
+Check(Near(roc.Roc(T(5)), 0), "one trade: none yet");
+roc.Add(T(20), 4.20, 100);
+Check(Near(roc.Roc(T(20)), 0.05), "a 5% jump counts in full when it comes");
+Check(Near(roc.Roc(T(25)), Fade(0.05, 5)) && Near(roc.Roc(T(30)), Fade(0.05, 10)) && Near(roc.Roc(T(40)), Fade(0.05, 20)),
+    $"and fades: {roc.Roc(T(25)):P2} after 5 s, {roc.Roc(T(30)):P2} after 10, {roc.Roc(T(40)):P2} after 20");
+Check(Near(roc.Roc(T(29.99)), roc.Roc(T(30.01)), 0.0001) && roc.At(T(30.01)).Trades == 0, "with no drop as the jump leaves the candle's window");
+Check(Near(roc.Roc(T(20)), 0.05), "asking for it changes nothing");
+roc.Add(T(30), 4.20, 100);
+Check(Near(roc.Roc(T(30)), Fade(0.05, 10)), "a trade at the same price changes nothing either");
 roc.Clear();
-Check(double.IsNaN(roc.Roc(T(42))), "starting over forgets the price before");
+Check(double.IsNaN(roc.Roc(T(42))), "starting over forgets it");
 roc.Add(T(43), 2.00, 100);
 Check(Near(roc.Roc(T(43)), 0), "so a new stock isn't measured against the last one's price");
+roc.Add(T(44), 2.10, 100);
+roc.Add(T(44), 2.00, 100);
+Check(Near(roc.Roc(T(44)), 0), "up and straight back is none");
+roc.Add(T(43.5), 2.02, 100);
+Check(Near(roc.Roc(T(44)), 0.01), "a trade timed before the last one doesn't grow what's there");
+
+var climb = new RollingCandle(TimeSpan.FromSeconds(10));
+for (int i = 0; i <= 1200; i++)
+    climb.Add(T(i / 10.0), 3 * Math.Pow(1.001, i / 10.0), 100);
+Check(Near(climb.Roc(T(120)), Math.Pow(1.001, 10) - 1, 0.0001), $"a steady 0.1% a second reads what 10 seconds of it is ({climb.Roc(T(120)):P3})");
+
+// The same thing the long way: the price against its own average over time, faded the same way.
+var wander = new RollingCandle(TimeSpan.FromSeconds(10));
+var rng = new Random(7);
+double price = 5, average = Math.Log(5), step = 0.001;
+wander.Add(T(0), price, 100);
+for (int i = 1; i <= 60_000; i++)
+{
+    average += (Math.Log(price) - average) * (1 - Math.Exp(-step / 10));
+    if (i % 250 == 0)
+    {
+        price *= 1 + ((rng.NextDouble() - 0.48) * 0.01);
+        wander.Add(T(i * step), price, 100);
+    }
+}
+Check(Near(wander.Roc(T(60)), (price / Math.Exp(average)) - 1, 1e-6), $"it's how far the price is from its exponential average ({wander.Roc(T(60)):P3})");
+
+var fiveSeconds = new RollingCandle(TimeSpan.FromSeconds(5));
+fiveSeconds.Add(T(0), 4.00, 100);
+fiveSeconds.Add(T(1), 4.20, 100);
+Check(Near(fiveSeconds.Roc(T(6)), Math.Exp(Math.Log(1.05) * Math.Exp(-1)) - 1), "it fades with the window's length, so a 5 second one fades twice as fast");
 Check(RollingCandle.FormatRoc(0.02361) == "+2.4%" && RollingCandle.FormatRoc(-0.004) == "-0.4%" && RollingCandle.FormatRoc(0.1249) == "+12.5%" && RollingCandle.FormatRoc(1.2341) == "+123.4%"
       && RollingCandle.FormatRoc(0) == "0.0%" && RollingCandle.FormatRoc(0.0004) == "0.0%" && RollingCandle.FormatRoc(-0.0004) == "0.0%" && RollingCandle.FormatRoc(0.0006) == "+0.1%" && RollingCandle.FormatRoc(double.NaN) == "",
     "it reads +2.4%, -0.4%, +12.5%, +123.4%, and 0.0% with no sign when it rounds to none");

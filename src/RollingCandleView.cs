@@ -7,8 +7,8 @@ namespace ScalpFeedIndicators;
 /// <summary>
 /// Puts a RollingCandle on its indicator's price chart: one candle just right of the latest bar, half as wide again
 /// as the chart's own candles by default (a setting), green with the close at or above the open and red below, its
-/// window's rate of change over it ("+2.4%", green up and red down; your request, 2026-11-24, in place of "10s") and
-/// its volume under it. Its colour is as strong as its volume against the
+/// rate of change over it ("+2.4%", green up and red down; your request, 2026-11-24, in place of "10s"), an exponential
+/// average with the window as its time constant (RollingCandle.Roc), and its window's volume under it. Its colour is as strong as its volume against the
 /// stock's typical volume for a window that long (VolumeBrightness): half at typical, full at twice typical, a
 /// quarter's opacity when quiet. That's the candle's brightest; down it each price is shaded by the shares traded
 /// there (VolumeAtPrice), in one smooth gradient: the busiest price brightest, prices under the least shares (1,000)
@@ -62,9 +62,10 @@ internal sealed class RollingCandleView
     private long nextReportTicks;
     /// <summary>
     /// The candle as drawn: its bar, colour alpha, glow heat and how hot its busiest prices run, both in twentieths
-    /// (so a redraw waits for a visible change); while a burst's blotch is fading, the redraw tick, so it's redrawn.
+    /// (so a redraw waits for a visible change); while a burst's blotch is fading, the redraw tick, so it's redrawn; and
+    /// the rate of change as it reads, which fades with no trades.
     /// </summary>
-    private readonly record struct Look(RollingBar Bar, int Alpha, int Heat, int Hot = 0, long Frame = 0);
+    private readonly record struct Look(RollingBar Bar, int Alpha, int Heat, int Hot = 0, long Frame = 0, string Roc = "");
 
     /// <param name="owner">The indicator whose chart it draws on.</param>
     /// <param name="latestBarTime">The open time of the chart's latest bar, or null with no bars yet.</param>
@@ -251,14 +252,16 @@ internal sealed class RollingCandleView
 
         if (bar.IsEmpty)
             return new Look(bar, 0, 0, 0, frame);
+
+        string roc = RollingCandle.FormatRoc(this.candle.Roc(now));
         if (!(bar.Taken >= this.minShares))
-            return new Look(bar, VolumeBrightness.Alpha(0), 0, 0, frame);
+            return new Look(bar, VolumeBrightness.Alpha(0), 0, 0, frame, roc);
 
         double ratio = this.brightness.Ratio(now, bar.Taken);
         int alpha = VolumeBrightness.Alpha(VolumeBrightness.Strength(ratio, this.fullMultiple));
         int heat = (int)Math.Round(VolumeBrightness.Heat(ratio, this.glowMultiple) * 20);
         int hot = (int)Math.Round(VolumeBrightness.Hot(ratio, this.fullMultiple, this.glowMultiple) * 20);
-        return new Look(bar, alpha, heat, hot, frame);
+        return new Look(bar, alpha, heat, hot, frame, roc);
     }
 
     private void OnTimer()
@@ -388,7 +391,7 @@ internal sealed class RollingCandleView
             graphics.SmoothingMode = SmoothingMode.AntiAlias;
             using var font = new Font("Segoe UI", 8f, heat > 0 ? FontStyle.Bold : FontStyle.Regular);
             using var text = new SolidBrush(heat > 0 ? hue : Label);
-            string over = RollingCandle.FormatRoc(this.candle.Roc(DateTime.UtcNow.Ticks));
+            string over = look.Roc;
             using var rocText = new SolidBrush(over.StartsWith('+') ? Up : over.StartsWith('-') ? Down : Label);
             var size = graphics.MeasureString(over, font);
 
