@@ -97,8 +97,9 @@ Check(RollingCandle.FormatRoc(0.02361) == "+2.4%" && RollingCandle.FormatRoc(-0.
       && RollingCandle.FormatRoc(0) == "0.0%" && RollingCandle.FormatRoc(0.0004) == "0.0%" && RollingCandle.FormatRoc(-0.0004) == "0.0%" && RollingCandle.FormatRoc(0.0006) == "+0.1%" && RollingCandle.FormatRoc(double.NaN) == "",
     "it reads +2.4%, -0.4%, +12.5%, +123.4%, and 0.0% with no sign when it rounds to none");
 
-Check(RollingCandle.FormatVolume(850) == "850" && RollingCandle.FormatVolume(1234) == "1.23K" && RollingCandle.FormatVolume(12_345) == "12.3K"
-      && RollingCandle.FormatVolume(1_250_000) == "1.25M", "the volume label reads 850, 1.23K, 12.3K, 1.25M");
+Check(RollingCandle.FormatVolume(850) == "850" && RollingCandle.FormatVolume(1234) == "1K" && RollingCandle.FormatVolume(12_345) == "12K" && RollingCandle.FormatVolume(12_700) == "13K"
+      && RollingCandle.FormatVolume(1_250_000) == "1M" && RollingCandle.FormatVolume(0.4) == "0" && RollingCandle.FormatVolume(0) == "0", "the volume label reads 850, 1K, 12K, 13K, 1M, with no decimals");
+Check(RollingCandle.FormatVolume(999.4) == "999" && RollingCandle.FormatVolume(999.6) == "1K" && RollingCandle.FormatVolume(999_400) == "999K" && RollingCandle.FormatVolume(999_600) == "1M", "and changes unit where it rounds over, never 1000K");
 Check(RollingBar.None == RollingBar.None, "an empty candle equals itself, so the redraw timer can tell nothing changed");
 
 // The colour against the stock's typical 10 s volume over the last 5 minutes: half at typical, full at 2x,

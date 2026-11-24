@@ -277,13 +277,12 @@ public sealed class RollingCandle
         return (size == "0.0" ? "" : roc > 0 ? "+" : "-") + size + "%";
     }
 
-    /// <summary>Shares as the label under the candle reads them: 850, 12.3K, 1.25M.</summary>
+    /// <summary>Shares as the label under the candle reads them, with no decimals (your request, 2026-11-24): 850, 12K, 1M.</summary>
     public static string FormatVolume(double shares) => shares switch
     {
-        >= 1_000_000 => $"{shares / 1_000_000:0.##}M",
-        >= 10_000 => $"{shares / 1_000:0.#}K",
-        >= 1_000 => $"{shares / 1_000:0.##}K",
-        _ => $"{shares:0}",
+        >= 999_500 => string.Create(CultureInfo.InvariantCulture, $"{shares / 1_000_000:0}M"),
+        >= 999.5 => string.Create(CultureInfo.InvariantCulture, $"{shares / 1_000:0}K"),
+        _ => string.Create(CultureInfo.InvariantCulture, $"{shares:0}"),
     };
 }
 
