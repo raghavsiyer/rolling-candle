@@ -35,7 +35,7 @@ the window, it's flat at the last trade.
   least 3 times what the stock typically has bought or sold over that time, and at least 1,000. Prints between the
   bid and ask never count. Settings turn the blotches off and set the second, the 3 times and the 1,000; another
   turns the volume shading off, leaving the candle one plain colour with only the blotches.
-- **Labels.** The rate of change over the window above the candle ("+2.35%", green up and red down), and the window's
+- **Labels.** The rate of change over the window above the candle ("+2.4%", green up and red down), and the window's
   volume under it. The rate of change is the latest price against the price when the window began, which is the last
   trade before it rather than the candle's open, so a jump to the window's first trade counts.
 

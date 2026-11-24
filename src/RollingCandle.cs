@@ -267,17 +267,14 @@ public sealed class RollingCandle
             this.before = this.trades.Dequeue().Price;
     }
 
-    /// <summary>The rate of change as the label over the candle reads it: +2.35%, -0.40%, +12.5%, 0.00%.</summary>
+    /// <summary>The rate of change as the label over the candle reads it, to one decimal: +2.4%, -0.4%, +12.5%, 0.0%.</summary>
     public static string FormatRoc(double roc)
     {
         if (!double.IsFinite(roc))
             return "";
 
-        double percent = Math.Abs(roc * 100);
-        string size = percent >= 99.95 ? percent.ToString("0", CultureInfo.InvariantCulture)
-            : percent >= 9.995 ? percent.ToString("0.0", CultureInfo.InvariantCulture)
-            : percent.ToString("0.00", CultureInfo.InvariantCulture);
-        return (size == "0.00" ? "" : roc > 0 ? "+" : "-") + size + "%";
+        string size = Math.Abs(roc * 100).ToString("0.0", CultureInfo.InvariantCulture);
+        return (size == "0.0" ? "" : roc > 0 ? "+" : "-") + size + "%";
     }
 
     /// <summary>Shares as the label under the candle reads them: 850, 12.3K, 1.25M.</summary>

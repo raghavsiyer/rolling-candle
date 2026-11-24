@@ -61,10 +61,9 @@ roc.Clear();
 Check(double.IsNaN(roc.Roc(T(42))), "starting over forgets the price before");
 roc.Add(T(43), 2.00, 100);
 Check(Near(roc.Roc(T(43)), 0), "so a new stock isn't measured against the last one's price");
-Check(RollingCandle.FormatRoc(0.02351) == "+2.35%" && RollingCandle.FormatRoc(-0.004) == "-0.40%" && RollingCandle.FormatRoc(0.1249) == "+12.5%" && RollingCandle.FormatRoc(1.2345) == "+123%"
-      && RollingCandle.FormatRoc(0) == "0.00%" && RollingCandle.FormatRoc(0.00004) == "0.00%" && RollingCandle.FormatRoc(-0.00004) == "0.00%" && RollingCandle.FormatRoc(double.NaN) == "",
-    "it reads +2.35%, -0.40%, +12.5%, +123%, and 0.00% with no sign when it rounds to none");
-Check(RollingCandle.FormatRoc(0.09994) == "+9.99%" && RollingCandle.FormatRoc(0.09996) == "+10.0%" && RollingCandle.FormatRoc(0.9994) == "+99.9%" && RollingCandle.FormatRoc(0.9996) == "+100%", "and changes decimals where it rounds over");
+Check(RollingCandle.FormatRoc(0.02361) == "+2.4%" && RollingCandle.FormatRoc(-0.004) == "-0.4%" && RollingCandle.FormatRoc(0.1249) == "+12.5%" && RollingCandle.FormatRoc(1.2341) == "+123.4%"
+      && RollingCandle.FormatRoc(0) == "0.0%" && RollingCandle.FormatRoc(0.0004) == "0.0%" && RollingCandle.FormatRoc(-0.0004) == "0.0%" && RollingCandle.FormatRoc(0.0006) == "+0.1%" && RollingCandle.FormatRoc(double.NaN) == "",
+    "it reads +2.4%, -0.4%, +12.5%, +123.4%, and 0.0% with no sign when it rounds to none");
 
 Check(RollingCandle.FormatVolume(850) == "850" && RollingCandle.FormatVolume(1234) == "1.23K" && RollingCandle.FormatVolume(12_345) == "12.3K"
       && RollingCandle.FormatVolume(1_250_000) == "1.25M", "the volume label reads 850, 1.23K, 12.3K, 1.25M");

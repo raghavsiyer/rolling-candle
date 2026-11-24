@@ -7,7 +7,7 @@ namespace ScalpFeedIndicators;
 /// <summary>
 /// Puts a RollingCandle on its indicator's price chart: one candle just right of the latest bar, half as wide again
 /// as the chart's own candles by default (a setting), green with the close at or above the open and red below, its
-/// window's rate of change over it ("+2.35%", green up and red down; your request, 2026-11-24, in place of "10s") and
+/// window's rate of change over it ("+2.4%", green up and red down; your request, 2026-11-24, in place of "10s") and
 /// its volume under it. Its colour is as strong as its volume against the
 /// stock's typical volume for a window that long (VolumeBrightness): half at typical, full at twice typical, a
 /// quarter's opacity when quiet. That's the candle's brightest; down it each price is shaded by the shares traded
